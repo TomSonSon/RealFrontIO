@@ -248,6 +248,22 @@ export class AttackExecution implements Execution {
     this.attack.clearBorder();
     // forEach over the dense storage — the values() generator showed up in long-game profiles
     this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
+
+    // Right-of-passage through allies (Realistic World only): also seed the
+    // frontier from allies' borders, so this attack can push into a target
+    // that borders an ally — using the ally's territory as a springboard with
+    // NO ownership change (only target tiles are ever conquered; addNeighbors
+    // adds only target-owned neighbour tiles, and the tick loop only conquers
+    // target tiles).
+    if (this.mg.config().isRealisticWorld()) {
+      for (const ally of this.mg.players()) {
+        if (ally === this._owner || ally.smallID() === this.targetSmallID) {
+          continue;
+        }
+        if (!this._owner.isFriendly(ally)) continue;
+        ally.borderTiles().forEach((tile) => this.addNeighbors(tile));
+      }
+    }
   }
 
   private retreat(malusPercent = 0) {
@@ -340,9 +356,27 @@ export class AttackExecution implements Execution {
       let onBorder = false;
       const numNeighbors = this.map.neighbors4(tileToConquer, this.nbuf);
       for (let i = 0; i < numNeighbors; i++) {
-        if (this.map.ownerID(this.nbuf[i]) === this.ownerSmallID) {
+        const oid = this.map.ownerID(this.nbuf[i]);
+        if (oid === this.ownerSmallID) {
           onBorder = true;
           break;
+        }
+        // Right-of-passage (Realistic World): an ally's neighbour counts as
+        // launchable ground, so the attack can conquer a target tile that only
+        // borders an ally (never the ally's own tile).
+        if (
+          this.mg.config().isRealisticWorld() &&
+          oid !== 0 &&
+          oid !== this.targetSmallID
+        ) {
+          const neighborOwner = this.mg.playerBySmallID(oid);
+          if (
+            neighborOwner.isPlayer() &&
+            this._owner.isFriendly(neighborOwner)
+          ) {
+            onBorder = true;
+            break;
+          }
         }
       }
       if (this.map.ownerID(tileToConquer) !== this.targetSmallID || !onBorder) {
