@@ -8,9 +8,11 @@ import {
   PlayerInfo,
   PlayerType,
   Relation,
+  UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { placeNationCapital } from "@openfront/engine/realism/RealisticWorld";
 import { setup } from "./util/Setup";
 import { TestConfig } from "./util/TestConfig";
 
@@ -194,5 +196,64 @@ describe("Realistic World — defaults unchanged when flag is off", () => {
     expect(us.relation(ca)).toBe(Relation.Neutral);
     // Difficulty-Medium nation troop value is the standard 18_750.
     expect(us.troops()).toBe(18_750);
+  });
+});
+
+describe("Realistic World — starting capital city", () => {
+  async function nationOnLand(
+    name = "United States",
+    overrides: Partial<GameConfig> = {},
+  ) {
+    const game = await setup("big_plains", {
+      publicGameModifiers: { isRealisticWorld: true },
+      ...overrides,
+    });
+    const player = game.addPlayer(
+      new PlayerInfo(name, PlayerType.Nation, null, "us_id"),
+    ) as Player;
+    let tile: number | undefined;
+    game.map().forEachTile((t) => {
+      if (
+        tile === undefined &&
+        game.map().isLand(t) &&
+        !game.map().isImpassable(t)
+      ) {
+        tile = t;
+      }
+    });
+    player.conquer(tile!);
+    return { game, player, tile: tile! };
+  }
+
+  test("places a capital city on the preferred tile when owned", async () => {
+    const { game, player, tile } = await nationOnLand();
+    placeNationCapital(game, player, tile);
+    const cities = player.units(UnitType.City);
+    expect(cities).toHaveLength(1);
+    expect(cities[0].tile()).toBe(tile);
+  });
+
+  test("falls back to any owned land tile when no preferred tile is given", async () => {
+    const { game, player } = await nationOnLand();
+    placeNationCapital(game, player);
+    expect(player.units(UnitType.City)).toHaveLength(1);
+  });
+
+  test("is a no-op when cities are disabled", async () => {
+    const { game, player, tile } = await nationOnLand("United States", {
+      disabledUnits: [UnitType.City],
+    });
+    placeNationCapital(game, player, tile);
+    expect(player.units(UnitType.City)).toHaveLength(0);
+  });
+
+  test("is a no-op for non-nation players", async () => {
+    const { game, tile } = await nationOnLand();
+    const human = game.addPlayer(
+      new PlayerInfo("player", PlayerType.Human, null, "p_id"),
+    ) as Player;
+    human.conquer(tile);
+    placeNationCapital(game, human, tile);
+    expect(human.units(UnitType.City)).toHaveLength(0);
   });
 });

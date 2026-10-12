@@ -1,3 +1,7 @@
+import type { TileRef } from "@openfront/engine-api/game/GameMap";
+import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import type { Game, Player } from "../game/Game";
+
 /**
  * Realistic World mode data.
  *
@@ -661,4 +665,54 @@ export function realisticRelationsFor(
     (parent !== undefined ? REALISTIC_RELATIONS[parent] : undefined) ??
     REALISTIC_RELATIONS[name]
   );
+}
+
+/**
+ * Whether `tile` is a valid spot for a nation's starting capital city: owned by
+ * the nation and buildable land (not impassable).
+ */
+function isBuildableCapitalTile(
+  game: Game,
+  player: Player,
+  tile: TileRef,
+): boolean {
+  return (
+    game.owner(tile) === player && game.isLand(tile) && !game.isImpassable(tile)
+  );
+}
+
+/**
+ * Realistic World mode: place a nation's starting "capital" city. Prefers
+ * `preferredTile` (the map-defined nation spawn / capital location) when the
+ * nation owns it, falling back to any other owned land tile. Ships before the
+ * nation has spawned (owns nothing) or if cities are disabled. The city is
+ * placed as a built structure via the standard build path, so it is persisted
+ * in game state like any other unit — no extra snapshot state needed.
+ */
+export function placeNationCapital(
+  game: Game,
+  player: Player,
+  preferredTile?: TileRef,
+): void {
+  if (player.type() !== PlayerType.Nation) return;
+  if (game.config().isUnitDisabled(UnitType.City)) return;
+
+  let tile: TileRef | undefined;
+  if (
+    preferredTile !== undefined &&
+    isBuildableCapitalTile(game, player, preferredTile)
+  ) {
+    tile = preferredTile;
+  }
+  if (tile === undefined) {
+    for (const t of player.tiles()) {
+      if (isBuildableCapitalTile(game, player, t)) {
+        tile = t;
+        break;
+      }
+    }
+  }
+  if (tile !== undefined) {
+    player.buildUnit(UnitType.City, tile, {});
+  }
 }

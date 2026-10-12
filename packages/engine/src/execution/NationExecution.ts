@@ -20,6 +20,7 @@ import {
 import { assertNever, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
+import { placeNationCapital } from "../realism/RealisticWorld";
 import {
   NationSchema,
   nationData,
@@ -277,6 +278,18 @@ export class NationExecution implements Execution {
       this.mg,
       this.player,
     );
+    // Realistic World mode: give the nation a starting capital city once it has
+    // settled (first post-spawn tick). Runs exactly once; the placed unit is
+    // persisted in game state like any other unit.
+    if (this.mg.config().isRealisticWorld()) {
+      const spawnCell = this.nation.spawnCell;
+      const preferred =
+        spawnCell !== undefined &&
+        this.mg.isValidCoord(spawnCell.x, spawnCell.y)
+          ? this.mg.ref(spawnCell.x, spawnCell.y)
+          : undefined;
+      placeNationCapital(this.mg, this.player, preferred);
+    }
     this.behaviorsInitialized = true;
   }
 
