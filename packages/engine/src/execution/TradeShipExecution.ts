@@ -1,5 +1,14 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import { MessageType, UnitType } from "@openfront/engine-api/game/GameTypes";
+import {
+  Gold,
+  MessageType,
+  UnitType,
+} from "@openfront/engine-api/game/GameTypes";
+import {
+  chokepointContains,
+  CHOKEPOINTS,
+  getChokepoint,
+} from "@openfront/engine-api/resources/Chokepoints";
 import { renderNumber } from "@openfront/engine-lib/Format";
 import {
   zInt,
@@ -12,6 +21,12 @@ import { z } from "zod";
 import { Execution, Game, Player, Unit } from "../game/Game";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathStatus } from "../pathfinding/types";
+import {
+  chokepointController,
+  interdictMultiplier,
+  isTollExempt,
+  tollForTier,
+} from "../realism/ChokepointToll";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import {
   restoreWaterPathFinder,
@@ -33,6 +48,12 @@ export class TradeShipExecution implements Execution {
   private tilesTraveled = 0;
   private motionPlanId = 1;
   private motionPlanDst: TileRef | null = null;
+  /**
+   * Chokepoints (strait ids) already tolled this voyage (Realistic World).
+   * Mirrors `wasCaptured`/`tilesTraveled`: snapshot-serialized so replays
+   * reproduce exactly ("one toll per strait per voyage").
+   */
+  private chokepointsTolledThisVoyage: string[] = [];
 
   constructor(
     private origOwner: Player,
@@ -166,6 +187,12 @@ export class TradeShipExecution implements Execution {
         }
         this.tradeShip.move(result.node);
         this.tilesTraveled++;
+        // Realistic World: passive chokepoint toll — the controller earns a
+        // deterministic toll (one per strait per voyage) when the ship passes
+        // through a chokepoint's water band.
+        if (this.mg.config().isRealisticWorld()) {
+          this.applyChokepointTolls(result.node);
+        }
         break;
       case PathStatus.COMPLETE:
         this.complete();
@@ -180,6 +207,55 @@ export class TradeShipExecution implements Execution {
     }
   }
 
+  /**
+   * Realistic World passive toll: for each chokepoint whose water band the
+   * ship's current tile lies in, credit its controller a fixed tier toll —
+   * capped at one toll per strait per voyage (tracked in
+   * `chokepointsTolledThisVoyage`). The controller's own / team / ally ships
+   * transit toll-free (right of passage). Deterministic: pure helpers over
+   * current tile ownership.
+   */
+  private applyChokepointTolls(tile: TileRef): void {
+    if (this.tradeShip === undefined) return;
+    const shipOwner = this.tradeShip.owner();
+    const x = this.mg.map().x(tile);
+    const y = this.mg.map().y(tile);
+    for (const cp of CHOKEPOINTS) {
+      if (this.chokepointsTolledThisVoyage.includes(cp.id)) continue;
+      if (!chokepointContains(cp, x, y)) continue;
+      const controller = chokepointController(this.mg, cp);
+      if (controller === null) continue;
+      if (isTollExempt(shipOwner, controller)) continue;
+      const toll = tollForTier(cp.tier, this.mg.config().goldMultiplier());
+      controller.addGold(toll);
+      this.chokepointsTolledThisVoyage.push(cp.id);
+    }
+  }
+
+  /**
+   * Realistic World interdiction (opt-in blockade): if a chokepoint's
+   * controller is embargoing the ship's destination-port owner, the voyage's
+   * gold is reduced by the strait's `suggestedInterdictionFraction`. Applied
+   * as a compounded multiplier on arrival; deterministic (Math.floor, fixed
+   * order). Only straits this voyage actually crossed (tolled — allies/self
+   * never reach here) are considered.
+   */
+  private applyInterdiction(gold: Gold): Gold {
+    const dstOwner = this._dstPort.owner();
+    let multiplier = 1;
+    for (const cpId of this.chokepointsTolledThisVoyage) {
+      const cp = getChokepoint(cpId);
+      if (cp === undefined) continue;
+      const controller = chokepointController(this.mg, cp);
+      if (controller === null) continue;
+      if (controller.hasEmbargoAgainst(dstOwner)) {
+        multiplier *= interdictMultiplier(cp);
+      }
+    }
+    if (multiplier === 1) return gold;
+    return BigInt(Math.floor(Number(gold) * multiplier));
+  }
+
   private complete() {
     this.active = false;
     this.tradeShip!.delete(false);
@@ -192,7 +268,7 @@ export class TradeShipExecution implements Execution {
 
     // Relation-scaled trade (Realistic World only): bloc-allied trade is worth
     // more, rival/neutral trade is tariffed. Classic mode -> multiplier 1.
-    const gold = BigInt(
+    let gold = BigInt(
       Math.floor(
         Number(
           this.mg
@@ -201,6 +277,12 @@ export class TradeShipExecution implements Execution {
         ) * this.mg.config().tradeMultiplier(rel),
       ),
     );
+
+    // Realistic World: chokepoint interdiction — a controller embargoing the
+    // destination port's owner cuts the transiting ship's payout.
+    if (this.mg.config().isRealisticWorld()) {
+      gold = this.applyInterdiction(gold);
+    }
 
     if (this.wasCaptured && this.tradeShip!.owner() === this.origOwner) {
       // Retaken by its original owner: the payout stands, but nobody pirated it.
@@ -262,6 +344,7 @@ export class TradeShipExecution implements Execution {
       tilesTraveled: this.tilesTraveled,
       motionPlanId: this.motionPlanId,
       motionPlanDst: this.motionPlanDst,
+      chokepointsTolledThisVoyage: this.chokepointsTolledThisVoyage,
       origOwner: w.player(this.origOwner),
       srcPort: w.unit(this.srcPort),
       dstPort: w.unit(this._dstPort),
@@ -279,6 +362,7 @@ export class TradeShipExecution implements Execution {
     this.tilesTraveled = s.tilesTraveled;
     this.motionPlanId = s.motionPlanId;
     this.motionPlanDst = s.motionPlanDst;
+    this.chokepointsTolledThisVoyage = s.chokepointsTolledThisVoyage;
     this.origOwner = r.player(s.origOwner);
     this.srcPort = r.unit(s.srcPort);
     this._dstPort = r.unit(s.dstPort);
@@ -295,6 +379,7 @@ const TradeShipExecutionStateSchema = z.object({
   tilesTraveled: zInt(),
   motionPlanId: zInt(),
   motionPlanDst: zTile().nullable(),
+  chokepointsTolledThisVoyage: z.array(z.string()),
   origOwner: zPlayerRef(),
   srcPort: zRef(),
   dstPort: zRef(),
@@ -303,7 +388,15 @@ type TradeShipExecutionState = z.infer<typeof TradeShipExecutionStateSchema>;
 
 export const TradeShipExecutionSnapshot = execSnapshotType({
   name: "TradeShip",
-  version: 1,
+  version: 2,
   schema: TradeShipExecutionStateSchema,
+  // v1 -> v2: added chokepoint-toll state (Realistic World §8.8a). Old games
+  // had no chokepoint mechanic, so the voyage starts with none tolled.
+  migrations: {
+    1: (d: unknown) => {
+      const old = d as Record<string, unknown>;
+      return { ...old, chokepointsTolledThisVoyage: [] };
+    },
+  },
   cls: () => TradeShipExecution,
 });
