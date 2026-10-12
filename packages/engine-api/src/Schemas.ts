@@ -405,6 +405,10 @@ export const AttackIntentSchema = z.object({
   type: z.literal("attack"),
   targetID: MappedID.nullable(),
   troops: zb.float({ min: 0 }).nullable(),
+  // Optional focus point: concentrate the attack on the border region around
+  // this tile ("push a specific region harder") instead of the whole frontier.
+  // Omitted => classic whole-border attack.
+  tile: zb.uint().optional(),
 });
 
 export const SpawnIntentSchema = z.object({

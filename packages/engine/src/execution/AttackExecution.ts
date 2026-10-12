@@ -32,6 +32,27 @@ import type {
 import { FlatBinaryHeap } from "./utils/FlatBinaryHeap"; // adjust path if needed
 
 const malusForRetreat = 25;
+
+// Focused-attack tuning ("push a specific region harder"). A focus tile makes
+// the attack concentrate its frontier and per-tick budget near that point (the
+// Schwerpunkt / main effort) while other borders become economy-of-force.
+const FOCUS_RADIUS = 40; // tiles from the focus tile treated as the "main effort"
+const FOCUS_PRIORITY_BONUS = 60; // min-heap priority offset (focus dequeues first)
+const FOCUS_SPEED_MIN = 0.5; // budget cost multiplier at the focus (2x throughput)
+const FOCUS_SPEED_MAX = 2.0; // budget cost multiplier far away (0.5x throughput)
+
+/**
+ * Per-tick budget weight for a conquered tile at `dist` tiles from the focus.
+ * Near the focus tiles are cheap (more conquered per tick); far away they are
+ * expensive (fewer per tick — the economy-of-force drip on other borders).
+ * Monotone, deterministic, pure.
+ */
+export function focusBudgetWeight(dist: number): number {
+  if (dist <= FOCUS_RADIUS) return FOCUS_SPEED_MIN;
+  if (dist >= FOCUS_RADIUS * 2) return FOCUS_SPEED_MAX;
+  const t = (dist - FOCUS_RADIUS) / FOCUS_RADIUS;
+  return FOCUS_SPEED_MIN + (FOCUS_SPEED_MAX - FOCUS_SPEED_MIN) * t;
+}
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -59,6 +80,7 @@ export class AttackExecution implements Execution {
     private _targetID: PlayerID | null,
     private sourceTile: TileRef | null = null,
     private removeTroops: boolean = true,
+    private focusTile: TileRef | null = null,
   ) {}
 
   public targetID(): PlayerID | null {
@@ -338,7 +360,15 @@ export class AttackExecution implements Execution {
         .attackLogic(
           this.attackLogicInput(troopCount, tileToConquer, borderSize),
         );
-      tickBudget -= tickFraction;
+      // Focused attacks spend their per-tick budget fastest near the focus
+      // (more tiles conquered there per tick) and slowest far from it.
+      const weight =
+        this.focusTile !== null
+          ? focusBudgetWeight(
+              this.map.manhattanDist(this.focusTile, tileToConquer),
+            )
+          : 1;
+      tickBudget -= tickFraction * weight;
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
       if (targetPlayer) {
@@ -448,9 +478,22 @@ export class AttackExecution implements Execution {
           break;
       }
 
+      // Focused attacks concentrate the frontier near the chosen tile: tiles
+      // close to the focus carry a lower priority (min-heap dequeues the
+      // lowest first), so they are conquered before far-flung borders, which
+      // only receive the economy-of-force leftover.
+      let focusPriority = 0;
+      if (this.focusTile !== null) {
+        const d = this.map.manhattanDist(this.focusTile, neighbor);
+        if (d < FOCUS_RADIUS) {
+          focusPriority = -FOCUS_PRIORITY_BONUS * (1 - d / FOCUS_RADIUS);
+        }
+      }
+
       const priority =
         (this.random.nextInt(0, 7) + 10) * (1 - numOwnedByMe * 0.5 + mag / 2) +
-        tickNow;
+        tickNow +
+        focusPriority;
 
       this.toConquer.enqueue(neighbor, priority);
     }
@@ -512,6 +555,7 @@ export class AttackExecution implements Execution {
       owner: w.player(this._owner),
       targetID: this._targetID,
       sourceTile: this.sourceTile,
+      focusTile: this.focusTile,
       removeTroops: this.removeTroops,
     });
   }
@@ -538,6 +582,7 @@ export class AttackExecution implements Execution {
     this._owner = r.player(s.owner);
     this._targetID = s.targetID;
     this.sourceTile = s.sourceTile;
+    this.focusTile = s.focusTile;
     this.removeTroops = s.removeTroops;
   }
 }
@@ -562,13 +607,21 @@ const AttackExecutionStateSchema = z.object({
   owner: zPlayerRef(),
   targetID: z.string().nullable(),
   sourceTile: zTile().nullable(),
+  focusTile: zTile().nullable(),
   removeTroops: z.boolean(),
 });
 type AttackExecutionState = z.infer<typeof AttackExecutionStateSchema>;
 
 export const AttackExecutionSnapshot = execSnapshotType({
   name: "Attack",
-  version: 1,
+  version: 2,
   schema: AttackExecutionStateSchema,
+  // v1 -> v2: added the optional focus region for region/front-focused attacks.
+  migrations: {
+    1: (d: unknown) => {
+      const old = d as Record<string, unknown>;
+      return { ...old, focusTile: old.focusTile ?? null };
+    },
+  },
   cls: () => AttackExecution,
 });
