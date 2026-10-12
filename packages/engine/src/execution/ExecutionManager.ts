@@ -1,4 +1,4 @@
-import { PlayerID } from "@openfront/engine-api/game/GameTypes";
+import { PlayerID, PlayerType } from "@openfront/engine-api/game/GameTypes";
 import {
   ClientID,
   GameID,
@@ -69,13 +69,20 @@ export class Executor {
     // create execution
     switch (intent.type) {
       case "attack": {
+        // A focus point only exists in Realistic World; elsewhere it is ignored.
+        const focus =
+          intent.tile !== undefined &&
+          this.mg.config().isRealisticWorld() &&
+          this.mg.isValidRef(intent.tile)
+            ? intent.tile
+            : null;
         return new AttackExecution(
           intent.troops,
           player,
           intent.targetID,
           null,
           undefined,
-          intent.tile ?? null,
+          focus,
         );
       }
       case "cancel_attack":
@@ -154,6 +161,8 @@ export class Executor {
         return new MarkDisconnectedExecution(player, intent.isDisconnected);
       case "toggle_pause":
         return new PauseExecution(player, intent.paused);
+      case "purchase_tech":
+        return new PurchaseTechExecution(player, intent.techId);
       default:
         throw new Error(`intent type ${intent} not found`);
     }
@@ -184,16 +193,17 @@ export class Executor {
 }
 
 /**
- * §8.6 coalition war declaration execution (Realistic World only). The
+ * section 8.6 coalition war declaration execution (Realistic World only). The
  * declaration is committed synchronously in init() from the intent's target
  * and candidates (resolved to Players by id): the engine's
  * Game.declareCoalitionWar resolves each candidate's vote via
- * NationCoalitionBehavior and commits the joiners (hostile + embargo).
+ * NationCoalitionBehavior and commits the joiners (hostile + embargo). Only
+ * nations are asked; humans are never forced into a war.
  * Classic mode (no realism) returns [] and leaves everything untouched, so
  * this execution is a harmless no-op outside Realistic World too.
  *
  * It runs once during the tick that adds it and is immediately inactive, so it
- * never survives a tick boundary and needs no snapshot state of its own — the
+ * never survives a tick boundary and needs no snapshot state of its own - the
  * committed war is fully reflected in engine state (relations/embargoes), not
  * in this execution object. snapshot() reuses the NoOp snapshot type so no
  * ExecutionRegistry entry is required.
@@ -209,17 +219,52 @@ class DeclareCoalitionWarExecution implements Execution {
     return false;
   }
 
+  // Runs even in the spawn phase so it never waits across a snapshot.
   activeDuringSpawnPhase(): boolean {
-    return false;
+    return true;
   }
 
   init(mg: Game): void {
-    if (!mg.hasPlayer(this.targetID)) return;
+    if (!this.initiator.isAlive() || !mg.hasPlayer(this.targetID)) return;
     const target = mg.player(this.targetID);
-    const candidates = this.candidateIDs
+    if (target === this.initiator || this.initiator.isFriendly(target)) return;
+    const candidates = [...new Set(this.candidateIDs)]
       .filter((id) => mg.hasPlayer(id))
-      .map((id) => mg.player(id));
+      .map((id) => mg.player(id))
+      .filter((p) => p.type() === PlayerType.Nation);
     mg.declareCoalitionWar(this.initiator, target, candidates);
+  }
+
+  tick(): void {}
+
+  snapshot(): ExecRecord {
+    return NoOpExecutionSnapshot.write({});
+  }
+}
+
+/**
+ * Buys a tech-tree node for the sender (Realistic World only). Invalid
+ * purchases are no-ops; the work happens in init() like the coalition
+ * declaration, so there is no state to snapshot.
+ */
+class PurchaseTechExecution implements Execution {
+  constructor(
+    private player: Player,
+    private techId: string,
+  ) {}
+
+  isActive(): boolean {
+    return false;
+  }
+
+  // Runs even in the spawn phase so it never waits across a snapshot.
+  activeDuringSpawnPhase(): boolean {
+    return true;
+  }
+
+  init(mg: Game): void {
+    if (!mg.config().isRealisticWorld() || !this.player.isAlive()) return;
+    mg.spendTech(this.player, this.techId);
   }
 
   tick(): void {}

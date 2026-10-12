@@ -41,13 +41,14 @@ export type Intent =
   | MoveWarshipIntent
   | MarkDisconnectedIntent
   | EmbargoAllIntent
-  | DeclareCoalitionWarIntent
   | UpgradeStructureIntent
   | DeleteUnitIntent
   | KickPlayerIntent
   | TogglePauseIntent
   | UpdateGameConfigIntent
-  | ToggleGameStartTimer;
+  | ToggleGameStartTimer
+  | DeclareCoalitionWarIntent
+  | PurchaseTechIntent;
 
 export type AttackIntent = z.infer<typeof AttackIntentSchema>;
 export type CancelAttackIntent = z.infer<typeof CancelAttackIntentSchema>;
@@ -57,6 +58,7 @@ export type EmbargoAllIntent = z.infer<typeof EmbargoAllIntentSchema>;
 export type DeclareCoalitionWarIntent = z.infer<
   typeof DeclareCoalitionWarIntentSchema
 >;
+export type PurchaseTechIntent = z.infer<typeof PurchaseTechIntentSchema>;
 export type CancelBoatIntent = z.infer<typeof CancelBoatIntentSchema>;
 export type AllianceRequestIntent = z.infer<typeof AllianceRequestIntentSchema>;
 export type AllianceRejectIntent = z.infer<typeof AllianceRejectIntentSchema>;
@@ -469,18 +471,6 @@ export const EmbargoAllIntentSchema = z.object({
   action: z.union([z.literal("start"), z.literal("stop")]),
 });
 
-// §8.6 coalition war declaration (Realistic World only). The initiator is the
-// intent's own sender (stamped clientID); `target` is the player the coalition
-// goes to war against and `candidates` are the friendly allies to invite. Each
-// candidate that votes YES commits (hostile + embargo); the engine's
-// declareCoalitionWar resolves the votes deterministically via
-// NationCoalitionBehavior. Classic mode (no realism) ignores it and returns [].
-export const DeclareCoalitionWarIntentSchema = z.object({
-  type: z.literal("declare_coalition_war"),
-  target: MappedID,
-  candidates: MappedID.array(),
-});
-
 export const DonateGoldIntentSchema = z.object({
   type: z.literal("donate_gold"),
   recipient: MappedID,
@@ -570,6 +560,25 @@ export const ToggleGameStartTimerIntentSchema = z.object({
   type: z.literal("toggle_game_start_timer"),
 });
 
+// section 8.6 coalition war declaration (Realistic World only). The initiator is the
+// intent's own sender (stamped clientID); `target` is the player the coalition
+// goes to war against and `candidates` are the friendly allies to invite. Only
+// nation candidates are asked: each that votes YES commits (hostile +
+// embargo), resolved deterministically via NationCoalitionBehavior. Humans are
+// never forced. Classic mode (no realism) ignores it.
+export const DeclareCoalitionWarIntentSchema = z.object({
+  type: z.literal("declare_coalition_war"),
+  target: MappedID,
+  candidates: MappedID.array().max(32),
+});
+
+// Realistic World tech tree: buy one node with gold. Invalid ids, unmet
+// prerequisites or too little gold are silently ignored by the engine.
+export const PurchaseTechIntentSchema = z.object({
+  type: z.literal("purchase_tech"),
+  techId: z.string().min(1).max(32),
+});
+
 export const IntentSchema = z.discriminatedUnion("type", [
   AttackIntentSchema,
   CancelAttackIntentSchema,
@@ -588,7 +597,6 @@ export const IntentSchema = z.discriminatedUnion("type", [
   UpgradeStructureIntentSchema,
   EmbargoIntentSchema,
   EmbargoAllIntentSchema,
-  DeclareCoalitionWarIntentSchema,
   MoveWarshipIntentSchema,
   QuickChatIntentSchema,
   AllianceExtensionIntentSchema,
@@ -597,6 +605,8 @@ export const IntentSchema = z.discriminatedUnion("type", [
   TogglePauseIntentSchema,
   UpdateGameConfigIntentSchema,
   ToggleGameStartTimerIntentSchema,
+  DeclareCoalitionWarIntentSchema,
+  PurchaseTechIntentSchema,
 ]);
 
 // StampedIntent = Intent with server-stamped clientID (used in turns and execution)

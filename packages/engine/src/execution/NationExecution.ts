@@ -34,6 +34,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { NationAllianceBehavior } from "./nation/NationAllianceBehavior";
+import { NationCoalitionBehavior } from "./nation/NationCoalitionBehavior";
 import { NationEmojiBehavior } from "./nation/NationEmojiBehavior";
 import { NationMIRVBehavior } from "./nation/NationMIRVBehavior";
 import { NationNukeBehavior } from "./nation/NationNukeBehavior";
@@ -225,6 +226,11 @@ export class NationExecution implements Execution {
     this.warshipBehavior.maybeSpawnWarship();
     this.handleEmbargoesToHostileNations();
     this.attackBehavior.maybeAttack();
+    new NationCoalitionBehavior(
+      this.random,
+      this.mg,
+      this.player,
+    ).maybeDeclareWar();
     this.warshipBehavior.counterWarshipInfestation();
     this.nukeBehavior.maybeSendNuke();
   }

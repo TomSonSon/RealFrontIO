@@ -1,5 +1,6 @@
 import {
   Difficulty,
+  GameMapType,
   PlayerInfo,
   PlayerType,
   Relation,
@@ -12,12 +13,13 @@ import { Game, Player } from "@openfront/engine/game/Game";
 import { setup } from "./util/Setup";
 
 /**
- * §8.6 coalition bot voting (research/10) and §8.7 right-of-passage.
+ * section 8.6 coalition bot voting (research/10) and section 8.7 right-of-passage.
  */
 
-describe("coalition war declarations — how bots vote (8.6)", () => {
+describe("coalition war declarations - how bots vote (8.6)", () => {
   async function scenario(difficulty = Difficulty.Medium) {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
       difficulty,
     });
@@ -60,9 +62,10 @@ describe("coalition war declarations — how bots vote (8.6)", () => {
   });
 });
 
-describe("right-of-passage through allies (8.7) — no ownership change", () => {
+describe("right-of-passage through allies (8.7) - no ownership change", () => {
   test("an attacker can push into a target through an ally's territory without taking the ally's tiles", async () => {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
     });
     const a = game.addPlayer(
@@ -114,6 +117,7 @@ describe("right-of-passage through allies (8.7) — no ownership change", () => 
 
   test("without an ally, A cannot conquer T's far territory", async () => {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
     });
     const a = game.addPlayer(
@@ -148,6 +152,7 @@ describe("right-of-passage through allies (8.7) — no ownership change", () => 
 
   test("multi-hop: an attacker can push into a target through a CHAIN of allies", async () => {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
     });
     const a = game.addPlayer(
@@ -207,7 +212,7 @@ describe("right-of-passage through allies (8.7) — no ownership change", () => 
   });
 });
 
-describe("coalition war declaration (8.6) — engine flow", () => {
+describe("coalition war declaration (8.6) - engine flow", () => {
   async function allyEach(game: Game, x: Player, y: Player) {
     game.addExecution(new AllianceRequestExecution(x, y.id()));
     game.executeNextTick();
@@ -225,6 +230,7 @@ describe("coalition war declaration (8.6) — engine flow", () => {
 
   test("allied candidates vote and join; idempotent commit", async () => {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
     });
     const initiator = game.addPlayer(

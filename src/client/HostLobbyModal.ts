@@ -59,6 +59,7 @@ import {
   sliderToNationsConfig,
   toOptionalNumber,
 } from "./utilities/GameConfigHelpers";
+import { realisticWorldApplies } from "./utilities/RealisticWorldToggle";
 
 @customElement("host-lobby-modal")
 export class HostLobbyModal extends BaseModal {
@@ -103,6 +104,7 @@ export class HostLobbyModal extends BaseModal {
   @state() private whitelistEnabled: boolean = false;
   @state() private allowedPublicIds: string = "";
   @state() private waterNukes: boolean = false;
+  @state() private realisticWorld: boolean = false;
   @state() private lobbyId = "";
   @state() private lobbyUrlSuffix = "";
   @state() private clients: ClientInfo[] = [];
@@ -707,6 +709,11 @@ export class HostLobbyModal extends BaseModal {
                     checked: this.waterNukes,
                   },
                   {
+                    labelKey: "game_settings.realistic_world",
+                    checked: this.realisticWorld,
+                    hidden: this.selectedMap !== GameMapType.World,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -1044,6 +1051,7 @@ export class HostLobbyModal extends BaseModal {
     this.whitelistEnabled = false;
     this.allowedPublicIds = "";
     this.waterNukes = false;
+    this.realisticWorld = false;
     this.hostCheatsEnabled = false;
     this.hostCheatInfiniteGold = false;
     this.hostCheatInfiniteTroops = false;
@@ -1064,6 +1072,7 @@ export class HostLobbyModal extends BaseModal {
   private async handleSelectRandomMap() {
     this.useRandomMap = true;
     this.selectedMap = getRandomMapType();
+    this.realisticWorld = false;
     await this.loadNationCount();
     this.putGameConfig();
   }
@@ -1074,6 +1083,7 @@ export class HostLobbyModal extends BaseModal {
 
   private async handleMapSelection(value: GameMapType) {
     this.selectedMap = value;
+    this.realisticWorld = false;
     this.useRandomMap = false;
     await this.loadNationCount();
     this.putGameConfig();
@@ -1145,6 +1155,10 @@ export class HostLobbyModal extends BaseModal {
         break;
       case "game_settings.water_nukes":
         this.waterNukes = checked;
+        this.putGameConfig();
+        break;
+      case "game_settings.realistic_world":
+        this.realisticWorld = checked;
         this.putGameConfig();
         break;
       case "game_settings.doomsday_clock":
@@ -1696,6 +1710,12 @@ export class HostLobbyModal extends BaseModal {
               ? (this.parseAllowedPublicIds() ?? [])
               : [],
             waterNukes: this.waterNukes ? true : null,
+            publicGameModifiers: {
+              isRealisticWorld: realisticWorldApplies(
+                this.selectedMap,
+                this.realisticWorld,
+              ),
+            },
             hostCheats: this.hostCheatsEnabled
               ? {
                   infiniteGold: this.hostCheatInfiniteGold || undefined,

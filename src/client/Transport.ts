@@ -178,6 +178,10 @@ export class SendDeclareCoalitionWarIntentEvent implements GameEvent {
   ) {}
 }
 
+export class SendPurchaseTechIntentEvent implements GameEvent {
+  constructor(public readonly techId: string) {}
+}
+
 export class SendDeleteUnitIntentEvent implements GameEvent {
   constructor(public readonly unitId: number) {}
 }
@@ -330,6 +334,9 @@ export class Transport {
     );
     this.subscribe(SendDeclareCoalitionWarIntentEvent, (e) =>
       this.onSendDeclareCoalitionWarIntent(e),
+    );
+    this.subscribe(SendPurchaseTechIntentEvent, (e) =>
+      this.sendIntent({ type: "purchase_tech", techId: e.techId }),
     );
     this.subscribe(BuildUnitIntentEvent, (e) => this.onBuildUnitIntent(e));
 

@@ -69,6 +69,7 @@ const SAMPLE_INTENTS: StampedIntent[] = [
   { type: "spawn", clientID: P1, tile: 123456 },
   { type: "attack", clientID: P1, targetID: P2, troops: 5123.75 },
   { type: "attack", clientID: P2, targetID: null, troops: null },
+  { type: "attack", clientID: P1, targetID: P2, troops: 10, tile: 4242 },
   { type: "cancel_attack", clientID: P1, attackID: "a1b2c3d4" },
   { type: "boat", clientID: P2, troops: 100.5, dst: 998877 },
   { type: "cancel_boat", clientID: P2, unitID: 42 },
@@ -114,6 +115,14 @@ const SAMPLE_INTENTS: StampedIntent[] = [
     config: { bots: 5, instantBuild: true },
   },
   { type: "toggle_game_start_timer", clientID: P1 },
+  {
+    type: "declare_coalition_war",
+    clientID: P1,
+    target: P2,
+    candidates: [P3, P2],
+  },
+  { type: "declare_coalition_war", clientID: P1, target: P3, candidates: [] },
+  { type: "purchase_tech", clientID: P2, techId: "military_1" },
 ];
 
 const SERVER_MESSAGES: ServerMessage[] = [

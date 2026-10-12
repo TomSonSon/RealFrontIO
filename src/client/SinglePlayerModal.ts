@@ -44,6 +44,7 @@ import {
   sliderToNationsConfig,
   toOptionalNumber,
 } from "./utilities/GameConfigHelpers";
+import { realisticWorldApplies } from "./utilities/RealisticWorldToggle";
 
 import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 
@@ -117,6 +118,7 @@ const DEFAULT_OPTIONS = {
   customAlliances: false,
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
+  realisticWorld: false,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -206,6 +208,7 @@ export class SinglePlayerModal extends BaseModal {
   @state() private customAllianceMinutes: number | undefined =
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
+  @state() private realisticWorld: boolean = DEFAULT_OPTIONS.realisticWorld;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -551,6 +554,11 @@ export class SinglePlayerModal extends BaseModal {
                     checked: this.waterNukes,
                   },
                   {
+                    labelKey: "game_settings.realistic_world",
+                    checked: this.realisticWorld,
+                    hidden: this.selectedMap !== GameMapType.World,
+                  },
+                  {
                     labelKey: "game_settings.doomsday_clock",
                     checked: this.doomsdayClock,
                     doomsdayClockSpeed: this.doomsdayClockSpeed,
@@ -619,6 +627,7 @@ export class SinglePlayerModal extends BaseModal {
       this.customAlliances !== DEFAULT_OPTIONS.customAlliances ||
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
+      this.realisticWorld !== DEFAULT_OPTIONS.realisticWorld ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -695,6 +704,7 @@ export class SinglePlayerModal extends BaseModal {
     this.customAlliances = DEFAULT_OPTIONS.customAlliances;
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
+    this.realisticWorld = DEFAULT_OPTIONS.realisticWorld;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
@@ -715,6 +725,7 @@ export class SinglePlayerModal extends BaseModal {
   private handleSelectRandomMap() {
     this.useRandomMap = true;
     this.selectedMap = getRandomMapType();
+    this.realisticWorld = false;
     void this.loadNationCount();
   }
 
@@ -724,6 +735,7 @@ export class SinglePlayerModal extends BaseModal {
 
   private handleMapSelection(value: GameMapType) {
     this.selectedMap = value;
+    this.realisticWorld = false;
     this.useRandomMap = false;
     void this.loadNationCount();
   }
@@ -792,6 +804,9 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.water_nukes":
         this.waterNukes = checked;
+        break;
+      case "game_settings.realistic_world":
+        this.realisticWorld = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
@@ -1178,6 +1193,9 @@ export class SinglePlayerModal extends BaseModal {
                   ? { customAllianceDuration: this.customAllianceMinutes ?? 0 }
                   : {}),
                 ...(this.waterNukes ? { waterNukes: true } : {}),
+                ...(realisticWorldApplies(this.selectedMap, this.realisticWorld)
+                  ? { publicGameModifiers: { isRealisticWorld: true } }
+                  : {}),
                 ...(this.doomsdayClock
                   ? {
                       doomsdayClock: {

@@ -47,6 +47,7 @@ export class PlayerView implements PlayerLike {
   public anonymousName: string | null = null;
   private decoder?: PatternDecoder;
 
+  private _techRanks: string[] = [];
   /** Long-lived renderer state — mutated in place by applyUpdate(). */
   public state: PlayerState;
   /** Static header data — set once at construction, never mutated. */
@@ -78,6 +79,7 @@ export class PlayerView implements PlayerLike {
     public readonly equippedCosmetics: PlayerCosmetics,
   ) {
     this.state = playerStateFromUpdate(data);
+    this._techRanks = data.techRanks?.slice() ?? [];
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -215,6 +217,7 @@ export class PlayerView implements PlayerLike {
    */
   applyUpdate(pu: PlayerUpdate): void {
     applyStateUpdate(this.state, pu);
+    if (pu.techRanks !== undefined) this._techRanks = pu.techRanks.slice();
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
     if (!userSettings.emojis()) {
@@ -447,6 +450,10 @@ export class PlayerView implements PlayerLike {
     return this.state.targets.map(
       (id) => this.game.playerBySmallID(id) as PlayerView,
     );
+  }
+  /** Owned tech-tree node ids (Realistic World); empty when none. */
+  techRanks(): string[] {
+    return this._techRanks;
   }
   gold(): Gold {
     // Engine Gold is bigint; renderer state stores number. Convert back at the

@@ -1,10 +1,16 @@
+import { GameMapType, PlayerType } from "@openfront/engine-api/game/GameTypes";
 import * as Chokepoints from "@openfront/engine-api/resources/Chokepoints";
 import {
   CHOKEPOINT_TIERS,
+  CHOKEPOINTS,
   getChokepoint,
   TIER_BASE_TOLL,
 } from "@openfront/engine-api/resources/Chokepoints";
-import { TradeShipExecution } from "@openfront/engine/execution/TradeShipExecution";
+import { readVersioned } from "@openfront/engine-lib/snapshot/SnapshotType";
+import {
+  TradeShipExecution,
+  TradeShipExecutionSnapshot,
+} from "@openfront/engine/execution/TradeShipExecution";
 import { PathStatus } from "@openfront/engine/pathfinding/types";
 import * as ChokepointToll from "@openfront/engine/realism/ChokepointToll";
 import {
@@ -12,11 +18,11 @@ import {
   interdictMultiplier,
   tollForTier,
 } from "@openfront/engine/realism/ChokepointToll";
-import { setup } from "./util/Setup";
+import { playerInfo, setup } from "./util/Setup";
 
 /**
- * ChokepointToll — strategic chokepoint toll/interdiction (research
- * research/real-world-realism/12-chokepoints.md §8.8a).
+ * ChokepointToll - strategic chokepoint toll/interdiction (research
+ * research/real-world-realism/12-chokepoints.md s.8.8a).
  *
  * Focused on the four required behaviours:
  *  1. control detection (plurality + deterministic smallID tie-break)
@@ -198,8 +204,12 @@ type Harness = {
   exec: TradeShipExecution;
 };
 
-async function makeHarness(opts: { realistic: boolean }): Promise<Harness> {
-  const game = await setup("ocean_and_land", {
+async function makeHarness(opts: {
+  realistic: boolean;
+  map?: string;
+}): Promise<Harness> {
+  const game = await setup(opts.map ?? "world", {
+    gameMap: GameMapType.World,
     infiniteGold: true,
     instantBuild: true,
     ...(opts.realistic
@@ -228,6 +238,7 @@ async function makeHarness(opts: { realistic: boolean }): Promise<Harness> {
   } as any;
   const controller = {
     id: vi.fn(() => 9),
+    smallID: vi.fn(() => 9),
     clientID: vi.fn(() => null),
     addGold: vi.fn(),
     hasEmbargoAgainst: vi.fn(() => false),
@@ -305,6 +316,35 @@ describe("TradeShipExecution chokepoint toll (realistic world)", () => {
     expect(controller.addGold).toHaveBeenCalledTimes(1);
   });
 
+  it("scans a strait once per voyage even when it has no controller", async () => {
+    const { exec } = await makeHarness({ realistic: true });
+    vi.spyOn(Chokepoints, "chokepointContains").mockImplementation(
+      (c: any) => c.id === "hormuz",
+    );
+    const spy = vi
+      .spyOn(ChokepointToll, "chokepointController")
+      .mockReturnValue(null);
+
+    exec.tick(1);
+    exec.tick(2);
+    exec.tick(3);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not toll on a map that is not the Normal World size", async () => {
+    const { exec, controller } = await makeHarness({
+      realistic: true,
+      map: "ocean_and_land",
+    });
+    vi.spyOn(Chokepoints, "chokepointContains").mockReturnValue(true as any);
+    vi.spyOn(ChokepointToll, "chokepointController").mockReturnValue(
+      controller,
+    );
+
+    exec.tick(1);
+    expect(controller.addGold).not.toHaveBeenCalled();
+  });
+
   it("does not toll when running in classic mode", async () => {
     const { exec, controller } = await makeHarness({ realistic: false });
     vi.spyOn(Chokepoints, "chokepointContains").mockReturnValue(true as any);
@@ -326,11 +366,8 @@ describe("TradeShipExecution chokepoint interdiction (realistic world)", () => {
     const { game, origOwner, dstOwner, controller, srcPort, dstPort, exec } =
       await makeHarness({ realistic: true });
     (exec as any).tilesTraveled = 5;
-    (exec as any).chokepointsTolledThisVoyage = ["hormuz"];
+    (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
     controller.hasEmbargoAgainst = vi.fn(() => true);
-    vi.spyOn(ChokepointToll, "chokepointController").mockReturnValue(
-      controller,
-    );
 
     (exec as any).complete();
 
@@ -350,11 +387,8 @@ describe("TradeShipExecution chokepoint interdiction (realistic world)", () => {
     const { game, origOwner, dstOwner, controller, srcPort, dstPort, exec } =
       await makeHarness({ realistic: true });
     (exec as any).tilesTraveled = 5;
-    (exec as any).chokepointsTolledThisVoyage = ["hormuz"];
+    (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
     controller.hasEmbargoAgainst = vi.fn(() => false);
-    vi.spyOn(ChokepointToll, "chokepointController").mockReturnValue(
-      controller,
-    );
 
     (exec as any).complete();
 
@@ -371,19 +405,110 @@ describe("TradeShipExecution chokepoint interdiction (realistic world)", () => {
     const { game, origOwner, dstOwner, controller, srcPort, dstPort, exec } =
       await makeHarness({ realistic: false });
     (exec as any).tilesTraveled = 5;
-    (exec as any).chokepointsTolledThisVoyage = ["hormuz"];
+    (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
     controller.hasEmbargoAgainst = vi.fn(() => true);
-    vi.spyOn(ChokepointToll, "chokepointController").mockReturnValue(
-      controller,
-    );
 
     (exec as any).complete();
 
     const cfg = game.config();
     const base = cfg.tradeShipGold(5, origOwner);
-    // Classic tradeMultiplier = 1, and no interdiction applied.
-    const expected = BigInt(Math.floor(Number(base) * 1));
+    // Classic mode pays the unscaled base and applies no interdiction.
+    const expected = base;
     expect(origOwner.addGold).toHaveBeenCalledWith(expected, srcPort.tile());
     expect(dstOwner.addGold).toHaveBeenCalledWith(expected, dstPort.tile());
   });
 });
+
+describe("TradeShipExecution snapshot", () => {
+  const base = {
+    active: true,
+    initialized: true,
+    tradeShip: null,
+    wasCaptured: false,
+    pathFinder: null,
+    tilesTraveled: 3,
+    motionPlanId: 1,
+    motionPlanDst: null,
+    origOwner: 1,
+    srcPort: 1,
+    dstPort: 2,
+  };
+
+  it("migrates a v1 record to empty chokepoint state", () => {
+    const state = readVersioned(TradeShipExecutionSnapshot, {
+      v: 1,
+      d: base,
+    });
+    expect(state.chokepointsChecked).toEqual([]);
+    expect(state.chokepointsTolledThisVoyage).toEqual([]);
+  });
+
+  it("round-trips checked and tolled straits with their controller", () => {
+    const state = {
+      ...base,
+      chokepointsChecked: ["hormuz", "suez"],
+      chokepointsTolledThisVoyage: [{ id: "hormuz", controller: 4 }],
+    };
+    const rec = TradeShipExecutionSnapshot.write(state);
+    expect(readVersioned(TradeShipExecutionSnapshot, rec)).toEqual(state);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Boxes against the real World map terrain
+// ---------------------------------------------------------------------------
+
+describe.each(["world", "../../../resources/maps/world"])(
+  "chokepoint boxes on the real World map (%s)",
+  (mapName) => {
+    it.each(CHOKEPOINTS.map((c) => [c.id, c] as const))(
+      "%s covers ocean with land on its coast",
+      async (_id, cp) => {
+        const game = await setup(mapName, { gameMap: GameMapType.World });
+        const map = game.map();
+        let ocean = 0;
+        let coast = 0;
+        for (let y = cp.bbox.y0; y <= cp.bbox.y1; y++) {
+          for (let x = cp.bbox.x0; x <= cp.bbox.x1; x++) {
+            const t = map.ref(x, y);
+            if (!map.isOcean(t)) continue;
+            ocean++;
+            const nbuf = new Array<number>(8);
+            const n = game.neighbors8(t, nbuf);
+            for (let i = 0; i < n; i++) if (map.isLand(nbuf[i])) coast++;
+          }
+        }
+        expect(ocean).toBeGreaterThan(0);
+        expect(coast).toBeGreaterThan(0);
+      },
+    );
+
+    it.each(CHOKEPOINTS.map((c) => [c.id, c] as const))(
+      "%s is controlled by a player owning its coast",
+      async (_id, cp) => {
+        const game = await setup(mapName, { gameMap: GameMapType.World });
+        const map = game.map();
+        const player = game.addPlayer(
+          playerInfo("controller", PlayerType.Human),
+        );
+        expect(chokepointController(game, cp)).toBeNull();
+        let given = false;
+        for (let y = cp.bbox.y0; y <= cp.bbox.y1 && !given; y++) {
+          for (let x = cp.bbox.x0; x <= cp.bbox.x1 && !given; x++) {
+            const t = map.ref(x, y);
+            if (!map.isOcean(t)) continue;
+            const nbuf = new Array<number>(8);
+            const n = game.neighbors8(t, nbuf);
+            for (let i = 0; i < n && !given; i++) {
+              if (map.isLand(nbuf[i])) {
+                player.conquer(nbuf[i]);
+                given = true;
+              }
+            }
+          }
+        }
+        expect(chokepointController(game, cp)).toBe(player);
+      },
+    );
+  },
+);

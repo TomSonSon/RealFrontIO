@@ -1,50 +1,35 @@
 /**
  * Chokepoints.ts
  *
- * STATIC DATA MODULE — no engine imports, no runtime dependencies. Safe to
+ * STATIC DATA MODULE - no engine imports, no runtime dependencies. Safe to
  * import from anywhere (engine, server, client, tests, tooling).
  *
  * PURPOSE (research: research/real-world-realism/10-economics-and-diplomacy.md
- * §8.8a "Chokepoint commercial/toll leverage", and
- * research/real-world-realism/05-terrain-and-geography.md §6 "Sea/Strait
+ * s.8.8a "Chokepoint commercial/toll leverage", and
+ * research/real-world-realism/05-terrain-and-geography.md s.6 "Sea/Strait
  * Chokepoints & Island Chains").
  *
  * A maritime chokepoint is a narrow strait/canal through which a
  * disproportionate share of trade must pass. Controlling one gives a nation
  * leverage over everyone who uses it: you can tax (toll) or deny (interdict)
- * commerce — the real-world mechanism behind Hormuz, Malacca, Suez, etc.
+ * commerce - the real-world mechanism behind Hormuz, Malacca, Suez, etc.
  *
- * This file is the *map-data pass* called for by §8.8a: it tags the water
+ * This file is the *map-data pass* called for by s.8.8a: it tags the water
  * bands of the world's major straits on the OpenFront "World" map
- * (2000 x 1000 tiles, full 360° equirectangular). The mechanic itself is
+ * (2000 x 1000 tiles). The mechanic itself is
  * designed in research/real-world-realism/12-chokepoints.md and is gated
  * behind `isRealisticWorld`.
  *
- * COORDINATE PROJECTION (matches the World map, 2000 x 1000):
- *   x = (lon + 180) / 360 * 2000
- *   y = (90 - lat) / 180 * 1000
- * Origin top-left, x → east, y → south. lon ∈ [-180, +180], lat ∈ [-90, +90].
- *
- * Coordinate sources: research doc §6 lat/long for each strait (WGS84),
- * converted to pixel boxes here. Boxes are deliberately GENEROUS search
- * regions (a strait is only a handful of pixels at 2000-wide scale; we
- * include the surrounding water so a resolver can honour the actual DEM),
- * matching §05's stated "boxes are approximate but generous — treat them as
- * search regions".
+ * COORDINATES: raw tile coordinates on the 2000 x 1000 Normal World map
+ * (origin top-left, x east, y south, both inclusive). The map is stylized, so
+ * the boxes are NOT derived from a lat/lon projection: each one was placed by
+ * decoding resources/maps/world/map.bin and covers the narrow water passage
+ * with coast on both sides. `lat`/`lon` are reference values for docs only.
  */
 
-// ---------------------------------------------------------------------------
-// Projection helpers (pure, dependency-free — duplicated here so the file is
-// self-contained and safe to import anywhere).
-// ---------------------------------------------------------------------------
-
+/** Dimensions of the Normal-size World map the boxes below are valid for. */
 export const WORLD_MAP_WIDTH = 2000;
 export const WORLD_MAP_HEIGHT = 1000;
-
-export const lonToX = (lon: number): number =>
-  ((lon + 180) / 360) * WORLD_MAP_WIDTH;
-export const latToY = (lat: number): number =>
-  ((90 - lat) / 180) * WORLD_MAP_HEIGHT;
 
 /** A pixel bounding box on the World map, inclusive of both corners. */
 export type PixelBox = {
@@ -76,7 +61,7 @@ export type ChokepointTier =
   (typeof CHOKEPOINT_TIERS)[keyof typeof CHOKEPOINT_TIERS];
 
 export type Chokepoint = {
-  /** Stable unique id (string, never changes once shipped — used in saves). */
+  /** Stable unique id (string, never changes once shipped - used in saves). */
   id: string;
   /** Human display name. */
   name: string;
@@ -103,7 +88,7 @@ export type Chokepoint = {
   suggestedTollPerShip: number;
   /**
    * SUGGESTED toll as a FRACTION (0..1) of a transiting trade-ship's eventual
-   * gold value — the "% of passing trade gold" model of §8.8a. Choose ONE of
+   * gold value - the "% of passing trade gold" model of s.8.8a. Choose ONE of
    * fixed-per-ship (`suggestedTollPerShip`) or this fraction in the mechanic;
    * they should not both apply to the same transit.
    */
@@ -116,13 +101,9 @@ export type Chokepoint = {
 };
 
 /**
- * The full, ordered list of tagged World-map chokepoints.
- *
- * Water-band pixel boxes were computed from the research doc's lat/long using
- * the equirectangular projection above. Because a strait is only ~1-3 px wide
- * at this scale, each box is widened by a margin so it reliably captures the
- * water column between the two shores; the shipping-lane resolver (in the
- * engine, later) intersects these boxes with actual Ocean tiles.
+ * The full, ordered list of tagged World-map chokepoints. Each `bbox` covers
+ * the strait's water plus the coast on both sides so the controller (owner of
+ * the adjacent land) can be resolved from tile ownership.
  */
 export const CHOKEPOINTS: readonly Chokepoint[] = [
   {
@@ -131,8 +112,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Persian Gulf", "Gulf of Oman"],
     lat: 26.6,
     lon: 56.3,
-    // ~26.6°N, 56.3°E → narrow N-S water ~ (x 1312-1314, y 351-353) + margin.
-    bbox: { x0: 1308, y0: 348, x1: 1318, y1: 356 },
+    // Musandam gap between the Persian Gulf and the Gulf of Oman.
+    bbox: { x0: 1234, y0: 346, x1: 1252, y1: 360 },
     tier: CHOKEPOINT_TIERS.Global,
     suggestedTollPerShip: 5000,
     suggestedTollFraction: 0.05,
@@ -144,9 +125,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Indian Ocean", "South China Sea"],
     lat: 1.5,
     lon: 102.5,
-    // Long E-W strait ~1-7°N, 95-103°E; the strategic (ever-narrowing) western
-    // half around the Malacca/Singapore throat is the toll-relevant band.
-    bbox: { x0: 1526, y0: 458, x1: 1578, y1: 494 },
+    // Narrowest part of the strait between Sumatra and the Malay peninsula.
+    bbox: { x0: 1478, y0: 478, x1: 1512, y1: 502 },
     tier: CHOKEPOINT_TIERS.Global,
     suggestedTollPerShip: 6000,
     suggestedTollFraction: 0.06,
@@ -158,8 +138,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Red Sea", "Gulf of Aden"],
     lat: 12.5,
     lon: 43.3,
-    // ~12.5°N, 43.3°E → narrow N-S water ~ (x 1240-1242, y 428-432) + margin.
-    bbox: { x0: 1220, y0: 420, x1: 1260, y1: 438 },
+    // Southern end of the Red Sea, a few tiles wide between Africa and Arabia.
+    bbox: { x0: 1168, y0: 424, x1: 1186, y1: 438 },
     tier: CHOKEPOINT_TIERS.Global,
     suggestedTollPerShip: 4000,
     suggestedTollFraction: 0.05,
@@ -171,8 +151,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Mediterranean Sea", "Red Sea"],
     lat: 30.5,
     lon: 32.3,
-    // ~30-31°N, 32.3°E → narrow N-S artificial water ~ (x 1179-1181, y 329-334).
-    bbox: { x0: 1175, y0: 326, x1: 1185, y1: 338 },
+    // Canal water line from the Mediterranean to the Gulf of Suez.
+    bbox: { x0: 1108, y0: 316, x1: 1132, y1: 346 },
     tier: CHOKEPOINT_TIERS.Global,
     suggestedTollPerShip: 5000,
     suggestedTollFraction: 0.05,
@@ -184,9 +164,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Black Sea", "Aegean Sea"],
     lat: 40.5,
     lon: 27.5,
-    // Two straits ~ (Bosporus 41°N,29°E ; Dardanelles 40.2°N,26.3°E) with the
-    // Sea of Marmara between; box spans both + Marmara band.
-    bbox: { x0: 1144, y0: 269, x1: 1163, y1: 285 },
+    // Bosporus, Sea of Marmara and Dardanelles.
+    bbox: { x0: 1068, y0: 256, x1: 1100, y1: 286 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 3000,
     suggestedTollFraction: 0.03,
@@ -198,8 +177,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Atlantic Ocean", "Mediterranean Sea"],
     lat: 35.95,
     lon: -5.5,
-    // ~35.95°N, 5.5°W → narrow E-W-ish water ~ (x 969-972, y 299-301) + margin.
-    bbox: { x0: 964, y0: 296, x1: 977, y1: 304 },
+    // Gap between southern Spain and Morocco.
+    bbox: { x0: 896, y0: 284, x1: 912, y1: 298 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 3000,
     suggestedTollFraction: 0.03,
@@ -211,8 +190,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Atlantic Ocean", "Pacific Ocean"],
     lat: 9.0,
     lon: -79.8,
-    // ~9°N, 79-80°W → artificial N-S water ~ (x 557-561, y 444-451).
-    bbox: { x0: 553, y0: 440, x1: 563, y1: 452 },
+    // Isthmus water gap between the Caribbean and the Pacific.
+    bbox: { x0: 490, y0: 448, x1: 512, y1: 462 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 3500,
     suggestedTollFraction: 0.035,
@@ -224,8 +203,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["North Sea", "English Channel"],
     lat: 51.0,
     lon: 1.4,
-    // ~51°N, 1.4°E → narrow N-S water ~ (x 1007-1009, y 216-217) + margin.
-    bbox: { x0: 1002, y0: 213, x1: 1013, y1: 220 },
+    // Narrow channel between Britain and the continent, down to the English Channel.
+    bbox: { x0: 934, y0: 190, x1: 952, y1: 206 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 2500,
     suggestedTollFraction: 0.025,
@@ -233,12 +212,12 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
   },
   {
     id: "danish_straits",
-    name: "Danish Straits (Kattegat/Øresund)",
+    name: "Danish Straits (Kattegat/Oresund)",
     connects: ["Baltic Sea", "North Sea"],
     lat: 56.0,
     lon: 10.0,
-    // ~54-58°N, 8-12°E → the Baltic exit; box spans Kattegat/Skagerrak/Øresund.
-    bbox: { x0: 1044, y0: 179, x1: 1066, y1: 197 },
+    // Kattegat exit between Jutland, Zealand and the German coast.
+    bbox: { x0: 1012, y0: 166, x1: 1040, y1: 180 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 1500,
     suggestedTollFraction: 0.015,
@@ -250,8 +229,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Arctic Ocean", "Pacific Ocean"],
     lat: 65.7,
     lon: -168.5,
-    // ~65-66°N, 168-170°W → narrow N-S water ~ (x 61-67, y 133-136).
-    bbox: { x0: 58, y0: 130, x1: 72, y1: 140 },
+    // Siberian side of the strait; the map edge splits the strait, so the box cannot wrap to Alaska.
+    bbox: { x0: 1976, y0: 100, x1: 1999, y1: 124 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 800,
     suggestedTollFraction: 0.01,
@@ -263,8 +242,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["East China Sea", "South China Sea"],
     lat: 24.5,
     lon: 119.5,
-    // ~23-25.5°N, 118.8-120.8°E → N-S water ~ (x 1660-1671, y 358-372).
-    bbox: { x0: 1656, y0: 355, x1: 1676, y1: 375 },
+    // Water between the Chinese coast and Taiwan.
+    bbox: { x0: 1590, y0: 356, x1: 1612, y1: 378 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 3500,
     suggestedTollFraction: 0.035,
@@ -276,8 +255,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["South China Sea", "Philippine Sea"],
     lat: 21.0,
     lon: 121.0,
-    // ~21°N, 120-122°E → water between Taiwan & Luzon ~ (x 1668-1679, y 378-384).
-    bbox: { x0: 1664, y0: 374, x1: 1684, y1: 388 },
+    // Water between southern Taiwan and northern Luzon.
+    bbox: { x0: 1596, y0: 374, x1: 1622, y1: 398 },
     tier: CHOKEPOINT_TIERS.Major,
     suggestedTollPerShip: 3000,
     suggestedTollFraction: 0.03,
@@ -289,8 +268,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Sea of Japan", "East China Sea"],
     lat: 34.5,
     lon: 129.4,
-    // ~34-35°N, 129-129.8°E → water between Korea & Japan ~ (x 1717-1721, y 306-311).
-    bbox: { x0: 1714, y0: 303, x1: 1724, y1: 314 },
+    // Water between southern Korea and Kyushu.
+    bbox: { x0: 1664, y0: 303, x1: 1692, y1: 318 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 1800,
     suggestedTollFraction: 0.02,
@@ -302,8 +281,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Java Sea", "Indian Ocean"],
     lat: -8.5,
     lon: 115.8,
-    // ~8.5°S, 115.8°E → water between Bali & Lombok ~ (x 1642-1644, y 546-550).
-    bbox: { x0: 1638, y0: 543, x1: 1648, y1: 553 },
+    // Narrow channel between Bali and Lombok.
+    bbox: { x0: 1600, y0: 528, x1: 1626, y1: 548 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 1500,
     suggestedTollFraction: 0.015,
@@ -315,8 +294,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Indian Ocean", "Java Sea"],
     lat: -6.0,
     lon: 105.5,
-    // ~6°S, 105.5°E → water between Sumatra & Java ~ (x 1583-1588, y 531-534).
-    bbox: { x0: 1578, y0: 526, x1: 1592, y1: 538 },
+    // Gap between southern Sumatra and Java.
+    bbox: { x0: 1508, y0: 538, x1: 1540, y1: 556 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 1500,
     suggestedTollFraction: 0.015,
@@ -328,8 +307,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Indian Ocean", "Indian Ocean"],
     lat: -16.0,
     lon: 42.0,
-    // Wide channel ~ (-12 to -18°S, 40.5-43.5°E) between Madagascar & Africa.
-    bbox: { x0: 1225, y0: 567, x1: 1242, y1: 600 },
+    // Narrowest part of the channel between Africa and Madagascar.
+    bbox: { x0: 1154, y0: 596, x1: 1200, y1: 612 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 1000,
     suggestedTollFraction: 0.01,
@@ -341,8 +320,8 @@ export const CHOKEPOINTS: readonly Chokepoint[] = [
     connects: ["Atlantic Ocean", "Pacific Ocean"],
     lat: -58.0,
     lon: -68.0,
-    // Wide storm passage ~ (-55 to -60°S, 64-72°W) below Cape Horn.
-    bbox: { x0: 600, y0: 806, x1: 644, y1: 833 },
+    // Water between the southern tip of South America and the Antarctic peninsula.
+    bbox: { x0: 556, y0: 848, x1: 612, y1: 896 },
     tier: CHOKEPOINT_TIERS.Minor,
     suggestedTollPerShip: 800,
     suggestedTollFraction: 0.008,
@@ -368,7 +347,7 @@ export const chokepointContains = (
 /**
  * Default toll constants (the mechanic is designed in 12-chokepoints.md).
  * These are the per-tier recommended values used when a tier has no bespoke
- * per-ship value — kept here so the design doc and engine cite one source.
+ * per-ship value - kept here so the design doc and engine cite one source.
  */
 export const TIER_BASE_TOLL: Record<ChokepointTier, number> = {
   Global: 5000,

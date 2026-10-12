@@ -30,13 +30,13 @@ import { TestConfig, UseRealAttackLogic } from "./util/TestConfig";
 
 /**
  * Realistic World tech tree (v1: MILITARY + ECONOMY branches). All effects are
- * gated behind isRealisticWorld() — classic mode is byte-for-byte unchanged
+ * gated behind isRealisticWorld() - classic mode is byte-for-byte unchanged
  * (identity multipliers). Pure math here is deterministic and unit-testable.
  */
 
 function baseConfig(): GameConfig {
   return {
-    gameMap: GameMapType.Asia,
+    gameMap: GameMapType.World,
     gameMapSize: GameMapSize.Normal,
     gameMode: GameMode.FFA,
     gameType: GameType.Singleplayer,
@@ -71,7 +71,7 @@ function stubPlayer(overrides: Partial<PlayerLike> = {}): PlayerLike {
   };
 }
 
-describe("TechTree — definitions", () => {
+describe("TechTree - definitions", () => {
   it("has two branches and three escalating tiers each", () => {
     expect(TECH_NODE_COUNT).toBe(6);
     const military = TECH_NODES.filter((n) => n.branch === "military");
@@ -104,7 +104,6 @@ describe("TechTree — definitions", () => {
   });
 
   it("enforces a hard rank cap (anti-snowball)", () => {
-    const full = new Set(allNodeIds());
     // Buying into a full roster is refused once at the cap.
     const owned = new Set([...allNodeIds()].slice(0, CAP_TOTAL_RANKS));
     expect(owned.size).toBe(CAP_TOTAL_RANKS);
@@ -117,7 +116,7 @@ describe("TechTree — definitions", () => {
   });
 });
 
-describe("TechTree — computeMultipliers (deterministic effects)", () => {
+describe("TechTree - computeMultipliers (deterministic effects)", () => {
   it("returns identity for no tech", () => {
     expect(computeMultipliers(new Set())).toEqual({
       troopRegen: 1,
@@ -161,7 +160,7 @@ describe("TechTree — computeMultipliers (deterministic effects)", () => {
   });
 });
 
-describe("TechTree — EngineConfig wiring", () => {
+describe("TechTree - EngineConfig wiring", () => {
   it("goldAdditionRate scales with the economy branch in Realistic World only", () => {
     const realistic = new TestConfig(realisticConfig(), false);
     const classic = new TestConfig(baseConfig(), false);
@@ -244,7 +243,7 @@ describe("TechTree — EngineConfig wiring", () => {
   });
 });
 
-describe("TechTree — live game spend + snapshot", () => {
+describe("TechTree - live game spend + snapshot", () => {
   async function realisticGame() {
     const nations = [
       new Nation(
@@ -258,7 +257,10 @@ describe("TechTree — live game spend + snapshot", () => {
     ];
     return setup(
       "big_plains",
-      { publicGameModifiers: { isRealisticWorld: true } },
+      {
+        gameMap: GameMapType.World,
+        publicGameModifiers: { isRealisticWorld: true },
+      },
       [],
       undefined,
       TestConfig,

@@ -8,8 +8,8 @@ import type { Game, Player } from "../game/Game";
  * When the `isRealisticWorld` game modifier is active, nation players start
  * with starting troops / gold scaled to their real-world military power, and
  * with initial diplomatic relations that mirror the real world (who allies
- * with whom, who is hostile). Everything here is deterministic static data —
- * no randomness, timing or host APIs — so the simulation stays bit-identical
+ * with whom, who is hostile). Everything here is deterministic static data -
+ * no randomness, timing or host APIs - so the simulation stays bit-identical
  * across clients.
  *
  * Sources and methodology: see research/real-world-realism/ in the repo root
@@ -33,7 +33,7 @@ export interface RealisticNationSeed {
  * are NOT listed here; they resolve to their parent nation's STRENGTH via
  * SUB_REGION_PARENT below (see realisticSeedFor).
  */
-const REALISTIC_SEEDS: Record<string, RealisticNationSeed> = {
+export const REALISTIC_SEEDS: Record<string, RealisticNationSeed> = {
   // Superpowers
   "United States": { troops: 100_000, gold: 500_000 },
   China: { troops: 85_000, gold: 420_000 },
@@ -64,7 +64,6 @@ const REALISTIC_SEEDS: Record<string, RealisticNationSeed> = {
   Mexico: { troops: 26_000, gold: 130_000 },
   Colombia: { troops: 26_000, gold: 120_000 },
   Thailand: { troops: 26_000, gold: 120_000 },
-  Israel: { troops: 28_000, gold: 160_000 },
   Sweden: { troops: 24_000, gold: 140_000 },
   Norway: { troops: 22_000, gold: 120_000 },
   Finland: { troops: 22_000, gold: 120_000 },
@@ -97,9 +96,14 @@ const REALISTIC_SEEDS: Record<string, RealisticNationSeed> = {
   Niger: { troops: 12_000, gold: 30_000 },
   Madagascar: { troops: 12_000, gold: 30_000 },
   Benin: { troops: 12_000, gold: 30_000 },
+  Latvia: { troops: 14_000, gold: 60_000 },
   Bhutan: { troops: 10_000, gold: 25_000 },
   Greenland: { troops: 8_000, gold: 20_000 },
   Iceland: { troops: 8_000, gold: 20_000 },
+  // Research stations, not states
+  Antarctica: { troops: 2_000, gold: 5_000 },
+  "West Antarctica": { troops: 2_000, gold: 5_000 },
+  "East Antarctica": { troops: 2_000, gold: 5_000 },
 };
 
 /**
@@ -173,7 +177,7 @@ export function realisticSeedFor(
  * Unlisted pairs default to neutral (0). Sub-regions resolve to their parent's
  * relations via realisticRelationsFor.
  */
-const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
+export const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
   "United States": {
     "United Kingdom": 80,
     France: 80,
@@ -198,7 +202,6 @@ const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
     "Saudi Arabia": 60,
     Philippines: 80,
     Taiwan: 70,
-    Israel: 80,
     Brazil: 50,
     Peru: 50,
     Argentina: 40,
@@ -257,7 +260,6 @@ const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
     Sweden: -80,
     Canada: -60,
     Japan: -40,
-    Estonia: -100,
   },
   India: {
     "United States": 60,
@@ -287,7 +289,7 @@ const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
     Spain: 60,
     Italy: 60,
     "Saudi Arabia": 60,
-    Turkey: 60,
+    Türkiye: 60,
     Russia: -80,
     China: -40,
   },
@@ -345,8 +347,6 @@ const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
     "United Kingdom": 60,
     Pakistan: 60,
     "Saudi Arabia": 60,
-    Azerbaijan: 0,
-    Greece: -60,
     Russia: 30,
     Iran: 40,
     Egypt: 40,
@@ -365,7 +365,6 @@ const REALISTIC_RELATIONS: Record<string, Record<string, number>> = {
     Germany: 70,
     "United Kingdom": 60,
     Spain: 70,
-    Greece: 60,
     Russia: -60,
   },
   Egypt: {
@@ -668,6 +667,23 @@ export function realisticRelationsFor(
 }
 
 /**
+ * Starting relation score of `from` toward `to` (both map names), or
+ * undefined when unlisted. Either name may be a sub-region, which resolves to
+ * its parent. A row listed on `from` wins over the reverse row on `to`, so a
+ * listed score applies in both directions unless the other side overrides it.
+ */
+export function realisticRelationScore(
+  from: string,
+  to: string,
+): number | undefined {
+  const directed = (a: string, b: string): number | undefined => {
+    const row = realisticRelationsFor(a);
+    return row?.[b] ?? row?.[SUB_REGION_PARENT[b]];
+  };
+  return directed(from, to) ?? directed(to, from);
+}
+
+/**
  * Whether `tile` is a valid spot for a nation's starting capital city: owned by
  * the nation and buildable land (not impassable).
  */
@@ -687,7 +703,7 @@ function isBuildableCapitalTile(
  * nation owns it, falling back to any other owned land tile. Ships before the
  * nation has spawned (owns nothing) or if cities are disabled. The city is
  * placed as a built structure via the standard build path, so it is persisted
- * in game state like any other unit — no extra snapshot state needed.
+ * in game state like any other unit - no extra snapshot state needed.
  */
 export function placeNationCapital(
   game: Game,

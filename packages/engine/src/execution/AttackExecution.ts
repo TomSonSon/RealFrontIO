@@ -44,7 +44,7 @@ const FOCUS_SPEED_MAX = 2.0; // budget cost multiplier far away (0.5x throughput
 /**
  * Per-tick budget weight for a conquered tile at `dist` tiles from the focus.
  * Near the focus tiles are cheap (more conquered per tick); far away they are
- * expensive (fewer per tick — the economy-of-force drip on other borders).
+ * expensive (fewer per tick - the economy-of-force drip on other borders).
  * Monotone, deterministic, pure.
  */
 export function focusBudgetWeight(dist: number): number {
@@ -74,9 +74,10 @@ export class AttackExecution implements Execution {
   private nbuf: TileRef[] = [0, 0, 0, 0];
   private nbuf2: TileRef[] = [0, 0, 0, 0];
   // Realistic-World right-of-passage: smallIDs of the attacker + everyone
-  // reachable through a chain of alliances. Recomputed each refresh; used by
-  // the tick loop to let a target tile that only borders an allied (passage)
-  // tile be conquered, without ever taking the ally's own tile.
+  // reachable through a chain of alliances. Derived from live alliances at the
+  // start of every tick (never snapshotted); used by the tick loop to let a
+  // target tile that only borders an allied (passage) tile be conquered,
+  // without ever taking the ally's own tile.
   private friendlyGroundIDs: Set<number> = new Set();
 
   constructor(
@@ -107,6 +108,10 @@ export class AttackExecution implements Execution {
       console.warn(`target ${this._targetID} not found`);
       this.active = false;
       return;
+    }
+
+    if (this.focusTile !== null && !mg.isValidRef(this.focusTile)) {
+      this.focusTile = null;
     }
 
     this.target =
@@ -253,7 +258,7 @@ export class AttackExecution implements Execution {
     this.attack.clearBorder();
 
     if (!this.mg.config().isRealisticWorld()) {
-      // forEach over the dense storage — the values() generator showed up in
+      // forEach over the dense storage - the values() generator showed up in
       // long-game profiles.
       this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
       return;
@@ -261,24 +266,31 @@ export class AttackExecution implements Execution {
 
     // Multi-hop right-of-passage (Realistic World): seed the frontier from
     // every tile owned by the attacker OR a transitively-allied player, so the
-    // attack can push into a target through a CHAIN of allies — using allied
+    // attack can push into a target through a CHAIN of allies - using allied
     // territory as a springboard with NO ownership change (only target tiles
     // are ever conquered; addNeighbors adds only target-owned neighbours and
     // the tick loop only conquers target tiles).
+    for (const p of this.updateFriendlyGround()) {
+      p.borderTiles().forEach((tile) => this.addNeighbors(tile));
+    }
+  }
+
+  /** Rebuilds friendlyGroundIDs from the current alliances; returns the players. */
+  private updateFriendlyGround(): Player[] {
     const ground = this.friendlyGroundPlayers();
     this.friendlyGroundIDs = new Set<number>(ground.map((p) => p.smallID()));
-    for (const p of ground) {
-      p.tiles().forEach((tile) => this.addNeighbors(tile));
-    }
+    return ground;
   }
 
   /**
    * The attacker plus everybody reachable through a chain of alliances (the
-   * attacker's allies, their allies, ...) — the "friendly ground" an attack
+   * attacker's allies, their allies, ...) - the "friendly ground" an attack
    * may spring from under right-of-passage.
    */
   private friendlyGroundPlayers(): Player[] {
     const ground: Player[] = [this._owner];
+    // Passage only exists to reach a player; wilderness is taken from own land.
+    if (!this.target.isPlayer()) return ground;
     const seen = new Set<Player>([this._owner]);
     const queue: Player[] = [this._owner];
     while (queue.length > 0) {
@@ -361,6 +373,10 @@ export class AttackExecution implements Execution {
       // In this case a new alliance was created AFTER the attack started.
       this.retreat();
       return;
+    }
+
+    if (this.mg.config().isRealisticWorld()) {
+      this.updateFriendlyGround();
     }
 
     const borderSize = this.attack.borderSize() + this.random.nextInt(0, 5);
@@ -524,7 +540,7 @@ export class AttackExecution implements Execution {
       const realistic = this.mg.config().isRealisticWorld();
       switch (this.map.terrainType(neighbor)) {
         case TerrainType.Plains:
-          mag = realistic ? 1 : 1;
+          mag = 1;
           break;
         case TerrainType.Highland:
           mag = realistic ? 1.8 : 1.5;
@@ -637,7 +653,7 @@ export class AttackExecution implements Execution {
     // Scratch buffers, overwritten before every read.
     this.nbuf = [0, 0, 0, 0];
     this.nbuf2 = [0, 0, 0, 0];
-    // Recomputed on the next refresh; an empty set is correct until then.
+    // Rebuilt at the start of the next tick.
     this.friendlyGroundIDs = new Set();
     this.startTroops = s.startTroops;
     this._owner = r.player(s.owner);

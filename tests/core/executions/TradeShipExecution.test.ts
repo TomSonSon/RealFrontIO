@@ -202,7 +202,7 @@ describe("TradeShipExecution", () => {
   });
 
   it("should count captured-ship payout as piracy revenue only", () => {
-    // Captured ships pay steal gold to the captor — GOLD_INDEX_STEAL
+    // Captured ships pay steal gold to the captor - GOLD_INDEX_STEAL
     // semantics: piracy revenue, distinct from trade revenue.
     tradeShip.owner = vi.fn(() => pirate);
     tradeShipExecution["pathFinder"] = {

@@ -30,6 +30,7 @@ import {
   PlayerLike,
   UnitPredicate,
 } from "@openfront/engine-api/game/ReadViews";
+import { CHOKEPOINTS } from "@openfront/engine-api/resources/Chokepoints";
 import {
   AllPlayersStats,
   ClientID,
@@ -67,10 +68,15 @@ import {
 import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathFinder } from "../pathfinding/types";
-import { realisticRelationsFor } from "../realism/RealisticWorld";
+import {
+  chokepointController,
+  hasChokepointMap,
+} from "../realism/ChokepointToll";
+import { realisticRelationScore } from "../realism/RealisticWorld";
 import {
   allNodeIds,
   canPurchase,
+  canPurchaseTech as canPurchaseTechNode,
   CAP_TOTAL_RANKS,
   computeMultipliers,
   IDENTITY_MULTIPLIERS,
@@ -181,6 +187,8 @@ export class GameImpl implements Game {
    * without touching per-player schemas. Empty in classic mode.
    */
   private _techRanks = new Map<number, string[]>();
+  /** Memo of computeMultipliers per smallID; dropped on every rank change. */
+  private _techMultipliers = new Map<number, TechMultipliers>();
 
   private _isPaused: boolean = false;
   private _winner: Player | Team | null = null;
@@ -791,11 +799,9 @@ export class GameImpl implements Game {
     const players = [...this._players.values()];
     for (const a of players) {
       if (a.type() !== PlayerType.Nation) continue;
-      const rels = realisticRelationsFor(a.name());
-      if (rels === undefined) continue;
       for (const b of players) {
         if (b === a || b.type() !== PlayerType.Nation) continue;
-        const score = rels[b.name()];
+        const score = realisticRelationScore(a.name(), b.name());
         if (score === undefined || score === 0) continue;
         a.updateRelation(b, score);
       }
@@ -1030,9 +1036,9 @@ export class GameImpl implements Game {
   }
 
   /**
-   * §8.6 coalition war declaration (Realistic World only): `initiator`
+   * section 8.6 coalition war declaration (Realistic World only): `initiator`
    * proposes a war on `target`; each friendly `candidate` that votes YES joins
-   * — becoming Hostile with the target and auto-sanctioning it (ties §8.4).
+   * - becoming Hostile with the target and auto-sanctioning it (ties section 8.4).
    * Returns the members who joined. Deterministic; bots decide via
    * NationCoalitionBehavior.
    */
@@ -1547,10 +1553,15 @@ export class GameImpl implements Game {
   /** The deterministic multipliers for a player, or identity outside realism. */
   private techMultipliersFor(player: PlayerLike): TechMultipliers {
     if (!this._config.isRealisticWorld()) return IDENTITY_MULTIPLIERS;
+    const cached = this._techMultipliers.get(player.smallID());
+    if (cached !== undefined) return cached;
     const ranks = this._techRanks.get(player.smallID());
-    return ranks === undefined || ranks.length === 0
-      ? IDENTITY_MULTIPLIERS
-      : computeMultipliers(new Set(ranks));
+    const m =
+      ranks === undefined || ranks.length === 0
+        ? IDENTITY_MULTIPLIERS
+        : computeMultipliers(new Set(ranks));
+    this._techMultipliers.set(player.smallID(), m);
+    return m;
   }
 
   ownedTechNodeIds(player: Player): readonly string[] {
@@ -1559,11 +1570,11 @@ export class GameImpl implements Game {
 
   canPurchaseTech(player: Player, nodeId: string): boolean {
     if (!this._config.isRealisticWorld()) return false;
-    const owned = new Set(this.techRanksFor(player));
-    if (!canPurchase(owned, nodeId)) return false;
-    const node = nodeById(nodeId);
-    if (node === undefined) return false;
-    return player.gold() >= BigInt(node.cost);
+    return canPurchaseTechNode(
+      nodeId,
+      this.techRanksFor(player),
+      player.gold(),
+    );
   }
 
   /**
@@ -1586,6 +1597,7 @@ export class GameImpl implements Game {
     const ranks = this.techRanksFor(player);
     ranks.push(nodeId);
     this._techRanks.set(player.smallID(), ranks);
+    this._techMultipliers.delete(player.smallID());
     return true;
   }
 
@@ -1603,7 +1615,7 @@ export class GameImpl implements Game {
   private static readonly RICH_GOLD_THRESHOLD = 200_000n;
 
   private applyNationTechPolicy(): void {
-    if (!this._config.isRealisticWorld()) return;
+    if (!this._config.isRealisticWorld() || this.inSpawnPhase()) return;
     const nations = [...this._players.values()]
       .filter((p) => p.type() === PlayerType.Nation)
       .sort((a, b) => a.smallID() - b.smallID());
@@ -1639,6 +1651,7 @@ export class GameImpl implements Game {
     const ranks = this.techRanksFor(player);
     ranks.push(nodeId);
     this._techRanks.set(player.smallID(), ranks);
+    this._techMultipliers.delete(player.smallID());
   }
 
   /** Deterministic snapshot of the tech tree, sorted by smallID. */
@@ -1757,6 +1770,27 @@ export class GameImpl implements Game {
         ([smallID, ranks]) => [smallID, [...ranks]],
       ),
     );
+    this._techMultipliers.clear();
+    for (const p of this._players.values()) {
+      (p as PlayerImpl).incomingEmbargoes = 0;
+    }
+    for (const p of this._players.values()) {
+      for (const e of p.getEmbargoes()) {
+        if (!e.isTemporary) (e.target as PlayerImpl).incomingEmbargoes++;
+      }
+    }
+  }
+
+  chokepointControllers(): { id: string; controller: Player | null }[] {
+    if (!this._config.isRealisticWorld() || !hasChokepointMap(this)) return [];
+    return CHOKEPOINTS.map((cp) => ({
+      id: cp.id,
+      controller: chokepointController(this, cp),
+    }));
+  }
+
+  incomingEmbargoCount(target: Player): number {
+    return (target as PlayerImpl).incomingEmbargoes;
   }
 
   conquerPlayer(conqueror: Player, conquered: Player) {

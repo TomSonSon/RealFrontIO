@@ -7,19 +7,23 @@ import {
   PlayerInfo,
   PlayerType,
 } from "@openfront/engine-api/game/GameTypes";
+import type { GameUpdateViewData } from "@openfront/engine-api/game/GameUpdates";
 import type { PlayerLike } from "@openfront/engine-api/game/ReadViews";
+import { CHOKEPOINTS } from "@openfront/engine-api/resources/Chokepoints";
 import { GameConfig } from "@openfront/engine-api/Schemas";
-import { coalitionSanctionFactor } from "@openfront/engine/configuration/EngineConfig";
+import { coalitionSanctionPercent } from "@openfront/engine/configuration/EngineConfig";
+import { Executor } from "@openfront/engine/execution/ExecutionManager";
 import { Game, Player } from "@openfront/engine/game/Game";
+import { GameRunner } from "@openfront/engine/GameRunner";
 import { setup } from "./util/Setup";
 import { TestConfig } from "./util/TestConfig";
 
 /**
  * Economy & diplomacy (research/real-world-realism/10-economics-and-diplomacy,
- * §8.1-8.2 "do now"): relation-scaled trade. Everyone still trades (as in
- * reality — rivals trade), but in Realistic World mode bloc allies trade deeper
+ * section 8.1-8.2 "do now"): relation-scaled trade. Everyone still trades (as in
+ * reality - rivals trade), but in Realistic World mode bloc allies trade deeper
  * (alignment bonus) while neutral/rival trade is tariffed. Classic mode keeps
- * the flat rates — the multiplier is 1 and nothing changes.
+ * the flat rates - the multiplier is 1 and nothing changes.
  */
 function baseConfig(): GameConfig {
   return {
@@ -40,7 +44,11 @@ function baseConfig(): GameConfig {
 }
 
 function realisticConfig(): GameConfig {
-  return { ...baseConfig(), publicGameModifiers: { isRealisticWorld: true } };
+  return {
+    ...baseConfig(),
+    gameMap: GameMapType.World,
+    publicGameModifiers: { isRealisticWorld: true },
+  };
 }
 
 const stubPlayer = { isLobbyCreator: () => false } as unknown as PlayerLike;
@@ -82,17 +90,51 @@ describe("relation-scaled trade (Realistic World)", () => {
   });
 });
 
-describe("coalition sanctions (Realistic World §8.4)", () => {
-  test("sanctions stack up to a floor — coordination hurts more", () => {
-    expect(coalitionSanctionFactor(0)).toBe(1);
-    expect(coalitionSanctionFactor(1)).toBe(0.75);
-    expect(coalitionSanctionFactor(2)).toBe(0.5);
-    expect(coalitionSanctionFactor(5)).toBe(0.5); // capped
-    expect(coalitionSanctionFactor(2)).toBeLessThan(coalitionSanctionFactor(1));
+describe("coalition sanctions (Realistic World section 8.4)", () => {
+  test("sanctions stack up to a floor - coordination hurts more", () => {
+    expect(coalitionSanctionPercent(0)).toBe(100);
+    expect(coalitionSanctionPercent(1)).toBe(75);
+    expect(coalitionSanctionPercent(2)).toBe(50);
+    expect(coalitionSanctionPercent(5)).toBe(50); // capped
+  });
+
+  async function sanctionScenario() {
+    const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    const [a, b, c] = ["A", "B", "C"].map(
+      (n) =>
+        game.addPlayer(
+          new PlayerInfo(n, PlayerType.Human, null, n.toLowerCase()),
+        ) as Player,
+    );
+    return { game, a, b, c };
+  }
+
+  test("only non-temporary embargoes count toward sanctions", async () => {
+    const { game, a, b, c } = await sanctionScenario();
+    b.addEmbargo(a, true);
+    expect(game.incomingEmbargoCount(a)).toBe(0);
+    c.addEmbargo(a, false);
+    expect(game.incomingEmbargoCount(a)).toBe(1);
+    // A temporary embargo upgraded to a permanent one starts counting.
+    b.addEmbargo(a, false);
+    expect(game.incomingEmbargoCount(a)).toBe(2);
+    b.stopEmbargo(a);
+    c.stopEmbargo(a);
+    expect(game.incomingEmbargoCount(a)).toBe(0);
+  });
+
+  test("a temporary embargo expiring does not change the count", async () => {
+    const { game, a, b } = await sanctionScenario();
+    b.addEmbargo(a, true);
+    b.endTemporaryEmbargo(a);
+    expect(game.incomingEmbargoCount(a)).toBe(0);
   });
 });
 
-describe("per-game reputation (Realistic World §8.5)", () => {
+describe("per-game reputation (Realistic World section 8.5)", () => {
   function grantLand(game: Game, players: Player[]): void {
     let i = 0;
     game.map().forEachTile((t) => {
@@ -103,6 +145,7 @@ describe("per-game reputation (Realistic World §8.5)", () => {
 
   test("betrayal tanks reputation THIS game (no persistence)", async () => {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
     });
     const a = game.addPlayer(
@@ -122,6 +165,48 @@ describe("per-game reputation (Realistic World §8.5)", () => {
     expect(a.canSendAllianceRequest(b)).toBe(false);
   });
 
+  test("reputation recovers over time so a betrayer is not locked out forever", async () => {
+    const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    const a = game.addPlayer(
+      new PlayerInfo("A", PlayerType.Human, null, "a"),
+    ) as Player;
+    const b = game.addPlayer(
+      new PlayerInfo("B", PlayerType.Human, null, "b"),
+    ) as Player;
+    grantLand(game, [a, b]);
+    game.endSpawnPhase();
+
+    a.markTraitor();
+    expect(a.reputation()).toBe(-40);
+    expect(a.canSendAllianceRequest(b)).toBe(false);
+
+    for (let i = 0; i < 600 * 11; i++) game.executeNextTick();
+    expect(a.reputation()).toBe(-29);
+    expect(a.canSendAllianceRequest(b)).toBe(true);
+
+    for (let i = 0; i < 600 * 40; i++) game.executeNextTick();
+    expect(a.reputation()).toBe(0);
+  });
+
+  test("a second betrayal resets the recovery clock and deepens the hole", async () => {
+    const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    const a = game.addPlayer(
+      new PlayerInfo("A", PlayerType.Human, null, "a"),
+    ) as Player;
+    grantLand(game, [a]);
+    game.endSpawnPhase();
+    a.markTraitor();
+    for (let i = 0; i < 600 * 11; i++) game.executeNextTick();
+    a.markTraitor();
+    expect(a.reputation()).toBe(-80);
+  });
+
   test("classic mode has no reputation gate (behavior unchanged)", async () => {
     const game = await setup("big_plains", {});
     const a = game.addPlayer(
@@ -133,5 +218,37 @@ describe("per-game reputation (Realistic World §8.5)", () => {
     grantLand(game, [a, b]);
     a.markTraitor();
     expect(a.canSendAllianceRequest(b)).toBe(true);
+  });
+});
+
+describe("chokepoint controllers (Realistic World)", () => {
+  test("empty outside Realistic World, one entry per strait inside it", async () => {
+    const classic = await setup("big_plains", {});
+    expect(classic.chokepointControllers()).toEqual([]);
+    const realistic = await setup("world", {
+      gameMap: GameMapType.World,
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    expect(realistic.chokepointControllers()).toHaveLength(CHOKEPOINTS.length);
+  });
+
+  test("empty on a World map that is not the Normal size (Compact)", async () => {
+    const compact = await setup("big_plains", {
+      gameMap: GameMapType.World,
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    expect(compact.width()).not.toBe(1000);
+    expect(compact.chokepointControllers()).toEqual([]);
+    const updates: GameUpdateViewData[] = [];
+    const runner = new GameRunner(
+      compact,
+      new Executor(compact, "game_id", "client"),
+      (gu) => updates.push(gu as GameUpdateViewData),
+    );
+    runner.init();
+    runner.addTurn({ turnNumber: 0, intents: [] });
+    runner.executeNextTick();
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates.every((u) => u.chokepoints === undefined)).toBe(true);
   });
 });

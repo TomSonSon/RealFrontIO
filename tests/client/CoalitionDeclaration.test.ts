@@ -13,7 +13,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testGameConfig } from "../util/Wire";
 
-// §8.6 coalition war declaration — client side: the intent schema parses the
+// section 8.6 coalition war declaration - client side: the intent schema parses the
 // target + candidate ids the UI sends, and the Transport's send path turns a
 // SendDeclareCoalitionWarIntentEvent into a decodable declare_coalition_war
 // frame exactly matching the engine's DeclareCoalitionWarExecution inputs.

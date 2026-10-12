@@ -9,7 +9,7 @@ import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import {
-  coalitionSanctionFactor,
+  coalitionSanctionPercent,
   EngineConfig,
 } from "../configuration/EngineConfig";
 import { Execution, Game, Player } from "../game/Game";
@@ -175,13 +175,9 @@ export class PlayerExecution implements Execution {
    */
   private coalitionSanctionedGold(base: bigint): bigint {
     if (!this.config.isRealisticWorld()) return base;
-    let senders = 0;
-    for (const p of this.mg.players()) {
-      if (p.id() === this.player.id()) continue;
-      if (p.hasEmbargoAgainst(this.player)) senders++;
-    }
+    const senders = this.mg.incomingEmbargoCount(this.player);
     if (senders === 0) return base;
-    return BigInt(Math.floor(Number(base) * coalitionSanctionFactor(senders)));
+    return (base * BigInt(coalitionSanctionPercent(senders))) / 100n;
   }
 
   private removeClusters() {
@@ -1118,6 +1114,9 @@ export class PlayerExecution implements Execution {
       maxY = -1e9;
     const map = this.map;
     const mySmallID = this.player.smallID();
+    // Realistic World: land held through right of passage borders an ally,
+    // which getCapturingPlayer never lets capture it.
+    const skipFriendly = this.config.isRealisticWorld();
     for (let j = 0; j < cluster.length; j++) {
       const tr = cluster[j];
       if (map.isShore(tr) || map.isOnEdgeOfMap(tr)) {
@@ -1128,6 +1127,14 @@ export class PlayerExecution implements Execution {
         const n = this.nbuf[i];
         const ownerId = map.ownerID(n);
         if (ownerId !== 0 && ownerId !== mySmallID) {
+          if (
+            skipFriendly &&
+            (this.mg.playerBySmallID(ownerId) as Player).isFriendly(
+              this.player,
+            )
+          ) {
+            continue;
+          }
           hasEnemy = true;
           const x = map.x(n);
           const y = map.y(n);

@@ -152,6 +152,7 @@ export class GameRunner {
   // Name placements are recomputed periodically; a runner that starts
   // mid-game (restored from a snapshot) computes them on its first tick.
   private viewDataStale = true;
+  private lastChokepointKey: string | null = null;
 
   constructor(
     public game: Game,
@@ -270,6 +271,8 @@ export class GameRunner {
       viewDataChanged = true;
     }
 
+    const chokepoints = this.changedChokepoints();
+
     const packedTileUpdates = this.game.drainPackedTileUpdates();
     const packedMotionPlans = this.game.drainPackedMotionPlans();
     const packedPlayerUpdates = this.game.drainPackedPlayerUpdates();
@@ -285,6 +288,7 @@ export class GameRunner {
       ...(packedPlayerUpdates ? { packedPlayerUpdates } : {}),
       ...(packedAttackUpdates ? { packedAttackUpdates } : {}),
       ...(packedNukeImpacts ? { packedNukeImpacts } : {}),
+      ...(chokepoints ? { chokepoints } : {}),
       updates: updates,
       // A copy: hosts hold several ticks' updates before reading them, and
       // the record changes in place on later ticks.
@@ -296,6 +300,20 @@ export class GameRunner {
     });
     this.isExecuting = false;
     return true;
+  }
+
+  private changedChokepoints(): GameUpdateViewData["chokepoints"] {
+    if (this.lastChokepointKey !== null && this.game.ticks() % 30 !== 0) {
+      return undefined;
+    }
+    const next = this.game
+      .chokepointControllers()
+      .map((c) => ({ id: c.id, controller: c.controller?.smallID() ?? null }));
+    if (next.length === 0) return undefined;
+    const key = next.map((c) => `${c.id}:${c.controller}`).join(",");
+    if (key === this.lastChokepointKey) return undefined;
+    this.lastChokepointKey = key;
+    return next;
   }
 
   public pendingTurns(): number {

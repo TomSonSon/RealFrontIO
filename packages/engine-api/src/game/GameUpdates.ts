@@ -73,6 +73,13 @@ export interface GameUpdateViewData {
    * Absent when no nukes detonated.
    */
   packedNukeImpacts?: Uint32Array;
+  /**
+   * Realistic World only: full chokepoint control list (controller is a
+   * player smallID, null when uncontrolled). Present on the first emission and
+   * whenever it changes, checked at most every 30 ticks. Consumers keep the
+   * last received list.
+   */
+  chokepoints?: { id: string; controller: number | null }[];
 }
 
 /**
@@ -279,6 +286,8 @@ export interface PlayerUpdate {
   betrayals?: number;
   lastDeleteUnitTick?: Tick;
   isLobbyCreator?: boolean;
+  /** Owned tech-tree node ids (Realistic World); omitted when none. */
+  techRanks?: string[];
 }
 
 export interface AllianceView {

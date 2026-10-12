@@ -14,7 +14,15 @@ import {
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import type { AttackLogicInput } from "@openfront/engine/configuration/EngineConfig";
 import { Game, Player } from "@openfront/engine/game/Game";
-import { placeNationCapital } from "@openfront/engine/realism/RealisticWorld";
+import {
+  placeNationCapital,
+  REALISTIC_RELATIONS,
+  REALISTIC_SEEDS,
+  realisticRelationScore,
+  realisticSeedFor,
+} from "@openfront/engine/realism/RealisticWorld";
+import fs from "fs";
+import path from "path";
 import { setup } from "./util/Setup";
 import { TestConfig, UseRealAttackLogic } from "./util/TestConfig";
 
@@ -47,20 +55,93 @@ function baseConfig(): GameConfig {
 function realisticConfig(): GameConfig {
   return {
     ...baseConfig(),
+    gameMap: GameMapType.World,
     publicGameModifiers: { isRealisticWorld: true },
   };
 }
 
-describe("Realistic World — engine flag", () => {
+describe("Realistic World - engine flag", () => {
   test("isRealisticWorld() reads publicGameModifiers.isRealisticWorld", () => {
     expect(new TestConfig(realisticConfig(), false).isRealisticWorld()).toBe(
       true,
     );
     expect(new TestConfig(baseConfig(), false).isRealisticWorld()).toBe(false);
   });
+
+  test("is World-map only: the flag is ignored on other maps", () => {
+    for (const gameMap of [
+      GameMapType.Asia,
+      GameMapType.GiantWorldMap,
+      GameMapType.WorldInverted,
+    ]) {
+      const cfg = new TestConfig({ ...realisticConfig(), gameMap }, false);
+      expect(cfg.isRealisticWorld()).toBe(false);
+    }
+  });
 });
 
-describe("Realistic World — nation starting strength", () => {
+describe("Realistic World - seed data matches the World map manifest", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "../resources/maps/world/manifest.json"),
+      "utf8",
+    ),
+  ) as { nations: { name: string }[] };
+  const names = manifest.nations.map((n) => n.name);
+
+  test("every World nation has a seed", () => {
+    expect(names.filter((n) => realisticSeedFor(n) === undefined)).toEqual([]);
+  });
+
+  test("every seed key names a World nation", () => {
+    const unknown = Object.keys(REALISTIC_SEEDS).filter(
+      (k) => !names.includes(k),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  test("every relation key (row and column) names a World nation", () => {
+    const unknown = new Set<string>();
+    for (const [row, cols] of Object.entries(REALISTIC_RELATIONS)) {
+      if (!names.includes(row)) unknown.add(row);
+      for (const col of Object.keys(cols)) {
+        if (!names.includes(col)) unknown.add(col);
+      }
+    }
+    expect([...unknown]).toEqual([]);
+  });
+
+  test("Latvia is seeded comparably to its neighbours", () => {
+    const latvia = realisticSeedFor("Latvia")!;
+    expect(latvia.troops).toBeGreaterThan(0);
+    expect(latvia.troops).toBeLessThanOrEqual(
+      realisticSeedFor("Belarus")!.troops,
+    );
+  });
+});
+
+describe("Realistic World - relation score direction", () => {
+  test("a score listed on one side applies in both directions", () => {
+    expect(realisticRelationScore("Madagascar", "France")).toBe(50);
+    expect(realisticRelationScore("France", "Madagascar")).toBe(50);
+  });
+
+  test("an explicit row for the reverse direction wins", () => {
+    expect(realisticRelationScore("United States", "Brazil")).toBe(50);
+    expect(realisticRelationScore("Brazil", "United States")).toBe(60);
+  });
+
+  test("sub-regions resolve to their parent in either direction", () => {
+    expect(realisticRelationScore("Russia", "Alaska")).toBe(-80);
+    expect(realisticRelationScore("Alaska", "Russia")).toBe(-80);
+  });
+
+  test("unlisted pairs have no score", () => {
+    expect(realisticRelationScore("Chad", "Bhutan")).toBeUndefined();
+  });
+});
+
+describe("Realistic World - nation starting strength", () => {
   const nation = (name: string, id: string) =>
     new PlayerInfo(name, PlayerType.Nation, null, id);
 
@@ -100,7 +181,7 @@ describe("Realistic World — nation starting strength", () => {
   });
 });
 
-describe("Realistic World — nation starting relations", () => {
+describe("Realistic World - nation starting relations", () => {
   const worldNations = (): Nation[] => [
     new Nation(
       undefined,
@@ -127,7 +208,10 @@ describe("Realistic World — nation starting relations", () => {
   async function realisticWorld(): Promise<Game> {
     return setup(
       "big_plains",
-      { publicGameModifiers: { isRealisticWorld: true } },
+      {
+        gameMap: GameMapType.World,
+        publicGameModifiers: { isRealisticWorld: true },
+      },
       [],
       undefined,
       TestConfig,
@@ -157,6 +241,34 @@ describe("Realistic World — nation starting relations", () => {
     expect(ca.relation(pk)).toBe(Relation.Neutral);
   });
 
+  test("a one-sided listing seeds both nations in the live game", async () => {
+    const game = await setup(
+      "big_plains",
+      {
+        gameMap: GameMapType.World,
+        publicGameModifiers: { isRealisticWorld: true },
+      },
+      [],
+      undefined,
+      TestConfig,
+      true,
+      [
+        new Nation(
+          undefined,
+          new PlayerInfo("Madagascar", PlayerType.Nation, null, "mg_id"),
+        ),
+        new Nation(
+          undefined,
+          new PlayerInfo("France", PlayerType.Nation, null, "fr_id"),
+        ),
+      ],
+    );
+    const mg = game.player("mg_id") as Player;
+    const fr = game.player("fr_id") as Player;
+    expect(mg.relation(fr)).toBe(Relation.Friendly);
+    expect(fr.relation(mg)).toBe(Relation.Friendly);
+  });
+
   test("seeds realistic starting strength in the live game", async () => {
     const game = await realisticWorld();
     const us = game.player("us_id") as Player;
@@ -167,7 +279,7 @@ describe("Realistic World — nation starting relations", () => {
   });
 });
 
-describe("Realistic World — defaults unchanged when flag is off", () => {
+describe("Realistic World - defaults unchanged when flag is off", () => {
   test("relations stay neutral without the flag", async () => {
     const game = await setup(
       "big_plains",
@@ -201,12 +313,13 @@ describe("Realistic World — defaults unchanged when flag is off", () => {
   });
 });
 
-describe("Realistic World — starting capital city", () => {
+describe("Realistic World - starting capital city", () => {
   async function nationOnLand(
     name = "United States",
     overrides: Partial<GameConfig> = {},
   ) {
     const game = await setup("big_plains", {
+      gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
       ...overrides,
     });
@@ -260,7 +373,7 @@ describe("Realistic World — starting capital city", () => {
   });
 });
 
-describe("Realistic World — terrain makes mountains a real barrier", () => {
+describe("Realistic World - terrain makes mountains a real barrier", () => {
   function attackInput(terrain: TerrainType): AttackLogicInput {
     return {
       terrain,

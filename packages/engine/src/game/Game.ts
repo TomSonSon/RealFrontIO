@@ -444,6 +444,7 @@ export interface Player extends PlayerLike {
   betrayals(): number;
   /** Per-game reliability (lower = a traitor nobody trusts this game). Derived, no persistence. */
   reputation(): number;
+
   // Targeting
   canTarget(other: Player): boolean;
   target(other: Player): void;
@@ -545,7 +546,7 @@ export interface Game extends GameLike {
   // Alliances
   expireAlliance(alliance: Alliance): void;
   /**
-   * §8.6 coalition war declaration. `initiator` proposes a war on `target` to
+   * section 8.6 coalition war declaration. `initiator` proposes a war on `target` to
    * `candidates`; each friendly candidate that votes yes joins (becomes
    * hostile with the target and auto-sanctions it). Returns who joined.
    * Bot members decide via NationCoalitionBehavior.
@@ -593,6 +594,15 @@ export interface Game extends GameLike {
    * tree is off, the node is not purchasable, or the player cannot afford it.
    */
   spendTech(player: Player, nodeId: string): boolean;
+
+  /** Non-temporary embargoes other players hold against `target` (sanction pressure). */
+  incomingEmbargoCount(target: Player): number;
+
+  /**
+   * Current controller of each Realistic World chokepoint, from tile
+   * ownership. Empty outside Realistic World.
+   */
+  chokepointControllers(): { id: string; controller: Player | null }[];
 
   // Units
   unit(id: number): Unit | undefined;
@@ -659,7 +669,6 @@ export interface Game extends GameLike {
 
   addUpdate(update: GameUpdate): void;
   railNetwork(): RailNetwork;
-  // Militrary MIRVs
   /** MIRVs launched so far by anyone; each one raises the next one's price. */
   mirvsLaunched(): number;
   recordMirvLaunch(): void;

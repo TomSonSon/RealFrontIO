@@ -19,7 +19,7 @@ describe("focused (region) attacks", () => {
     // Within the focus radius: 0.5x budget cost (2x throughput).
     expect(focusBudgetWeight(0)).toBe(0.5);
     expect(focusBudgetWeight(40)).toBe(0.5);
-    // Far away: 2x budget cost (0.5x throughput — economy of force).
+    // Far away: 2x budget cost (0.5x throughput - economy of force).
     expect(focusBudgetWeight(80)).toBe(2);
     // Monotone: closer is always cheaper than farther.
     expect(focusBudgetWeight(10)).toBeLessThan(focusBudgetWeight(50));

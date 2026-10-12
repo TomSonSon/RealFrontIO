@@ -231,6 +231,13 @@ function queuedIntent(game: Game, p: Player, tick: number): Intent | null {
     },
     { type: "mark_disconnected", isDisconnected: false },
     { type: "toggle_pause", paused: false },
+    { type: "attack", targetID: other.id(), troops: 10, tile: 0 },
+    {
+      type: "declare_coalition_war",
+      target: other.id(),
+      candidates: [other.id()],
+    },
+    { type: "purchase_tech", techId: "military_1" },
   ];
   return queued[(tick - 20) / 2] ?? null;
 }

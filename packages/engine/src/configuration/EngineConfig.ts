@@ -1,5 +1,6 @@
 import {
   Difficulty,
+  GameMapType,
   Gold,
   PlayerInfo,
   PlayerType,
@@ -43,11 +44,9 @@ export interface AttackLogicInput {
   /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
   borderSize: number;
   /**
-   * Realistic World tech tree: the attacker's Military combat-power factor
-   * (1 = no tech / classic). Applied to the per-tile loss denominators so a
-   * better-equipped attacker takes fewer losses and inflicts more. Optional and
-   * defaults to 1; the live sim populates it once calling attacks carry the
-   * owner's factor (see techMultipliersFor / AttackExecution).
+   * Optional combat-power factor (1 = none) scaling the per-tile loss
+   * exchange. Not set by the live sim: tech attackPower already applies
+   * through attackAmount.
    */
   attackerCombatPower?: number;
 }
@@ -111,10 +110,10 @@ function largeTerritoryBonus(numTiles: number, depth: number): number {
  * Coalition-sanction damage (Realistic World mode): how much a target's
  * passive income is reduced per concurrent embargo-wielding sender, capped so
  * a sanctioned economy keeps a floor. More senders (a coalition / isolation)
- * hurts more — coordinating pressure is stronger than a lone boycott.
+ * hurts more - coordinating pressure is stronger than a lone boycott.
  */
-export function coalitionSanctionFactor(senders: number): number {
-  return Math.max(0.5, 1 - 0.25 * senders);
+export function coalitionSanctionPercent(senders: number): number {
+  return Math.max(50, 100 - 25 * senders);
 }
 
 function terrainAttackBase(
@@ -193,8 +192,12 @@ export class EngineConfig extends Config {
   spawnNations(): boolean {
     return this._gameConfig.nations !== "disabled";
   }
+  /** Realism seeds are keyed by World-map nation names, so it is World-only. */
   isRealisticWorld(): boolean {
-    return this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false;
+    return (
+      (this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false) &&
+      this._gameConfig.gameMap === GameMapType.World
+    );
   }
 
   // --- Tech tree (Realistic World only) ---
@@ -245,7 +248,7 @@ export class EngineConfig extends Config {
   }
   /**
    * Relation-scaled trade (Realistic World only). Everyone still trades, as in
-   * reality (rivals trade — US-China, India-Russia energy) — but bloc allies
+   * reality (rivals trade - US-China, India-Russia energy) - but bloc allies
    * trade deeper (alignment bonus) while neutral/rival trade is tariffed.
    * Classic mode always returns 1, so behavior is unchanged outside realism.
    */
@@ -683,9 +686,6 @@ export class EngineConfig extends Config {
       attacker.numTiles,
       LARGE_ATTACKER_SPEED_DEPTH,
     );
-    // Realistic World tech tree: the attacker's Military combat power scales
-    // the exchange — a better-equipped stack bleeds less per tile and inflicts
-    // more. Identity (1) outside realism / without the field set.
     const attackerCombatPower = input.attackerCombatPower ?? 1;
     return {
       attackerTroopLoss: attackerTroopLoss / attackerCombatPower,

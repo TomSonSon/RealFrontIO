@@ -268,6 +268,11 @@ export class MapPlaylist {
       excludedModifiers.push("isPeaceTime"); // Nations don't have PVP immunity
     }
 
+    // Realism seeds are keyed by World-map nation names.
+    if (map !== GameMapType.World) {
+      excludedModifiers.push("isRealisticWorld");
+    }
+
     // Per-map disabled modifiers from info.json (e.g. island maps disable isRandomSpawn).
     const mapInfo = allMaps.find((m) => m.type === map);
     if (mapInfo?.disabledModifiers) {

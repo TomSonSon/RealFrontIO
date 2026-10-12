@@ -4,12 +4,14 @@ import {
   Chokepoint,
   ChokepointTier,
   TIER_BASE_TOLL,
+  WORLD_MAP_HEIGHT,
+  WORLD_MAP_WIDTH,
 } from "@openfront/engine-api/resources/Chokepoints";
 import type { Game, Player } from "../game/Game";
 
 /**
- * ChokepointToll.ts — strategic chokepoint toll & interdiction helpers
- * (research/real-world-realism/12-chokepoints.md §8.8a).
+ * ChokepointToll.ts - strategic chokepoint toll & interdiction helpers
+ * (research/real-world-realism/12-chokepoints.md s.8.8a).
  *
  * Everything here is PURE and deterministic over existing game state (static
  * terrain + tile ownership), so the mechanic is bit-identical on every client.
@@ -22,15 +24,23 @@ import type { Game, Player } from "../game/Game";
  */
 
 /**
+ * The chokepoint boxes are raw tile coordinates of the Normal-size World map,
+ * so they only mean anything on a map with exactly those dimensions.
+ */
+export function hasChokepointMap(game: Game): boolean {
+  return game.width() === WORLD_MAP_WIDTH && game.height() === WORLD_MAP_HEIGHT;
+}
+
+/**
  * Determine who controls a chokepoint, recomputed from current tile ownership
  * (never a stored claim, so capturing coasts flips control automatically).
  *
- * Rule (task §8.8a / 12-chokepoints.md §3): walk every tile in the strait's
+ * Rule (task s.8.8a / 12-chokepoints.md s.3): walk every tile in the strait's
  * water `bbox`, find the actual Ocean tiles ("water band"), and tally every
  * adjacent land tile (8-directional) by its owner. The controller is the
  * player owning the most such coastal land tiles; ties resolve to the smaller
  * `smallID` (players always have a distinct smallID). Terra-nullius-only
- * windows yield `null` (no controller ⇒ free transit).
+ * windows yield `null` (no controller => free transit).
  *
  * Deterministic: fixed bbox scan order + a count-then-smallID comparison that
  * is independent of Map iteration order.
@@ -80,7 +90,7 @@ export function chokepointController(
 }
 
 /**
- * Fixed per-transit toll (Model A, 12-chokepoints.md §4.2): base the toll on
+ * Fixed per-transit toll (Model A, 12-chokepoints.md s.4.2): base the toll on
  * the strait's tier (`TIER_BASE_TOLL`), scaled by `goldMultiplier()` so it
  * stays meaningful in high-gold games. One toll per strait per voyage (the
  * caller caps it), so this is just the unit amount.
@@ -93,7 +103,7 @@ export function tollForTier(
 }
 
 /**
- * The toll-free check for right-of-passage (12-chokepoints.md §4.1): the
+ * The toll-free check for right-of-passage (12-chokepoints.md s.4.1): the
  * controller's own ships, teammates, and allies transit toll-free.
  */
 export function isTollExempt(shipOwner: Player, controller: Player): boolean {
@@ -104,9 +114,9 @@ export function isTollExempt(shipOwner: Player, controller: Player): boolean {
 }
 
 /**
- * Interdiction multiplier (12-chokepoints.md §5): a controller that interdicts
+ * Interdiction multiplier (12-chokepoints.md s.5): a controller that interdicts
  * a ship's transit reduces its voyage value by `suggestedInterdictionFraction`
- * (e.g. 0.5 for Hormuz ⇒ the ship keeps 0.5). Applied with Math.floor on the
+ * (e.g. 0.5 for Hormuz => the ship keeps 0.5). Applied with Math.floor on the
  * final payout in the caller.
  */
 export function interdictMultiplier(cp: Chokepoint): number {

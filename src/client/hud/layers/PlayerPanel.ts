@@ -43,6 +43,7 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
+import { realisticWorldApplies } from "../../utilities/RealisticWorldToggle";
 import { renderDuration, showToast, translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
 import { ChatModal } from "./ChatModal";
@@ -332,14 +333,21 @@ export class PlayerPanel extends LitElement implements Controller {
     this.hide();
   }
 
-  // §8.6 coalition war declaration — offered only in Realistic World games
+  // section 8.6 coalition war declaration - offered only in Realistic World games
   // (where the engine's declareCoalitionWar does anything). Invites the
   // viewer's current allies as candidate voters.
   private isCoalitionWarEnabled(): boolean {
-    return (
-      this.g.config().gameConfig().publicGameModifiers?.isRealisticWorld ===
-      true
+    const gc = this.g.config().gameConfig();
+    return realisticWorldApplies(
+      gc.gameMap,
+      gc.publicGameModifiers?.isRealisticWorld === true,
     );
+  }
+
+  // Friendly players (allies, teammates) are never valid war targets; the
+  // engine drops the declaration.
+  private canDeclareCoalitionWar(my: PlayerView, other: PlayerView): boolean {
+    return this.isCoalitionWarEnabled() && !my.isFriendly(other);
   }
 
   private handleDeclareCoalitionWarClick(
@@ -355,7 +363,10 @@ export class PlayerPanel extends LitElement implements Controller {
       );
       return;
     }
-    const candidates = myPlayer.allies();
+    const candidates = myPlayer
+      .allies()
+      .filter((a) => a.type() === PlayerType.Nation)
+      .slice(0, 32);
     if (candidates.length === 0) {
       showToast(
         translateText("player_panel.declare_coalition_war_no_allies"),
@@ -1006,12 +1017,14 @@ export class PlayerPanel extends LitElement implements Controller {
                       label: translateText("player_panel.start_trade"),
                       type: "green",
                     })}
-                ${this.isCoalitionWarEnabled()
+                ${this.canDeclareCoalitionWar(my, other)
                   ? actionButton({
                       onClick: (e: MouseEvent) =>
                         this.handleDeclareCoalitionWarClick(e, my, other),
                       icon: declareCoalitionWarIcon,
-                      iconAlt: "Declare Coalition War",
+                      iconAlt: translateText(
+                        "player_panel.declare_coalition_war",
+                      ),
                       title: translateText(
                         "player_panel.declare_coalition_war",
                       ),

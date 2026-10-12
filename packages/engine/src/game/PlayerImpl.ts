@@ -131,6 +131,9 @@ Object.freeze(EMPTY_ATTACK_UPDATES);
 Object.freeze(EMPTY_ALLIANCE_VIEWS);
 Object.freeze(EMPTY_EMOJIS);
 
+/** Ticks of good behavior that win back one reputation point (~1 minute). */
+const REPUTATION_RECOVERY_TICKS = 600;
+
 export class PlayerImpl implements Player {
   public _lastTileChange: number = 0;
   // Bumped on every ownership change of one of this player's tiles (several
@@ -157,6 +160,8 @@ export class PlayerImpl implements Player {
   private _betrayalCount: number = 0;
 
   private embargoes = new Map<PlayerID, Embargo>();
+  /** Non-temporary embargoes other players hold against this one; rebuilt on restore by GameImpl. */
+  incomingEmbargoes = 0;
 
   public _borderTiles = new TileSet();
 
@@ -416,7 +421,13 @@ export class PlayerImpl implements Player {
       betrayals: this._betrayalCount,
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
+      techRanks: this.techRanksForUpdate(),
     };
+  }
+
+  private techRanksForUpdate(): string[] | undefined {
+    const ranks = this.mg.ownedTechNodeIds(this);
+    return ranks.length === 0 ? undefined : [...ranks];
   }
 
   smallID(): number {
@@ -831,7 +842,7 @@ export class PlayerImpl implements Player {
     }
 
     // Realistic World: a player who has betrayed this game (reputation below
-    // the floor) can't be trusted to form NEW alliances — per-game only.
+    // the floor) can't be trusted to form NEW alliances - per-game only.
     if (this.mg.config().isRealisticWorld() && this.reputation() < -30) {
       return false;
     }
@@ -936,14 +947,17 @@ export class PlayerImpl implements Player {
   }
 
   /**
-   * Per-game reliability (Realistic World only). Betrayals mark the player as
-   * unreliable for the rest of THIS game; there is deliberately no cross-game
-   * persistence. Derived from the already-tracked betrayal count, so no new
-   * snapshot field is needed.
+   * Per-game reliability (Realistic World only). Each betrayal costs 40 points,
+   * and one point is regained per REPUTATION_RECOVERY_TICKS since the latest
+   * betrayal, up to 0. Derived from the betrayal count and the traitor mark
+   * tick, so no new snapshot field is needed.
    */
   reputation(): number {
-    const rep = -40 * this._betrayalCount;
-    return rep === 0 ? 0 : rep;
+    if (this._betrayalCount === 0) return 0;
+    const recovered = Math.floor(
+      (this.mg.ticks() - this.markedTraitorTick) / REPUTATION_RECOVERY_TICKS,
+    );
+    return Math.min(0, recovered - 40 * this._betrayalCount);
   }
 
   createAllianceRequest(recipient: Player): AllianceRequest | null {
@@ -1257,6 +1271,7 @@ export class PlayerImpl implements Player {
   addEmbargo(other: Player, isTemporary: boolean): void {
     const embargo = this.embargoes.get(other.id());
     if (embargo !== undefined && !embargo.isTemporary) return;
+    if (!isTemporary) (other as PlayerImpl).incomingEmbargoes++;
 
     this.mg.addUpdate({
       type: GameUpdateType.EmbargoEvent,
@@ -1273,6 +1288,9 @@ export class PlayerImpl implements Player {
   }
 
   stopEmbargo(other: Player): void {
+    if (this.embargoes.get(other.id())?.isTemporary === false) {
+      (other as PlayerImpl).incomingEmbargoes--;
+    }
     this.embargoes.delete(other.id());
     this.mg.addUpdate({
       type: GameUpdateType.EmbargoEvent,

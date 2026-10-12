@@ -33,6 +33,11 @@ export function notableLobbySettings(
       label: translateText("difficulty.difficulty"),
       value: translateText(`difficulty.${c.difficulty.toLowerCase()}`),
     });
+  if (pm?.isRealisticWorld)
+    items.push({
+      label: translateText("game_settings.realistic_world"),
+      value: enabled,
+    });
   if (c.infiniteTroops)
     items.push({
       label: translateText("game_settings.infinite_troops"),
