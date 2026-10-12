@@ -42,10 +42,13 @@ OpenFront already has most of the *machinery* — it just starts from a flat, eq
 - ✅ **Mode + relations + strength** — `publicGameModifiers.isRealisticWorld` wired end-to-end (`EngineConfig`, `MapPlaylist`, zod schema, client badge); nations seed realistic starting troops/gold (`02`) and starting relations (`01`).
 - ✅ **Starting capital city** — nations open with a capital at their map spawn (`placeNationCapital`).
 - ✅ **Terrain combat rules** — Realistic World mountains are a real barrier (slow/bloody to take, armies route around) per `05`.
+- ✅ **region/front-focused attacks** — player-push-a-region harder (`09` §7: focus-tile weighted conquest heap + per-region troop sub-budget).
+- ✅ **Economy & diplomacy core** — relation-scaled trade, sanctions/boycotts that strain alliances (auto-sanction), per-game reputation/betrayal, coalition war declarations (bot votes via `NationCoalitionBehavior`), and **right-of-passage / basing** (single-hop then **multi-hop** through ally chains). See `10` §8.4–8.7.
+- ✅ **Chokepoint toll & interdiction (§8.8)** — `Chokepoints.ts` strait-tag data pass (17 real maritime chokepoints with World-map pixel bboxes) + engine mechanic: controller detection (coastal plurality), passive per-transit toll, opt-in interdiction that cuts the voyage payout. See `12-chokepoints.md`.
+- ✅ **Per-game skill/tech tree** — MILITARY + ECONOMY branches × 3 tiers, gold-spendable, hard rank cap, deterministic nation default-spend policy applying multipliers to troop regen, gold income, structure cost, and attack/defense power. See `11-leveling-and-tech-tree.md`.
+- ✅ **Coalition-declaration client UI** — `declare_coalition_war` intent (target + candidates) through the wire, Transport event, player-panel trigger (Realistic World only), en.json keys.
 
 **Next (design in `09` / `10`, implement after):**
-- 🔲 **War-dynamics, P0: region/front-focused attacks** — let a player push a *specific* region harder (region-weighted conquest heap + per-region troop sub-budget; interior lines relocation, feints, encirclement later). See `09` §7.
-- 🔲 **Economy & diplomacy** — relation-tiered trade, sanctions/boycotts that strain alliances, reputation/betrayal, coalition action, right-of-passage/basing, strategic resources/chokepoints. See `10` §8.
 - 🔲 **Structures at real hubs** — place cities/factories/bases at `04`/`03` coordinates (capital is a first slice).
 - 🔲 **Terrain map regeneration** — regenerate `image.png` from a real DEM (SRTM/GLO-30) so ranges match reality and peaks become impassable walls (remote tooling task; Go-based generator).
 
