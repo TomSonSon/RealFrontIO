@@ -175,6 +175,12 @@ export function getActiveModifiers(
       badgeKey: "public_game_modifier.hard_nations",
     });
   }
+  if (modifiers.isRealisticWorld) {
+    result.push({
+      labelKey: "public_game_modifier.realistic_world_label",
+      badgeKey: "public_game_modifier.realistic_world",
+    });
+  }
   if (modifiers.startingGold) {
     const millions = parseFloat(
       (modifiers.startingGold / 1_000_000).toPrecision(12),

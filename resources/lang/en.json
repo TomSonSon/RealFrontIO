@@ -1958,6 +1958,8 @@
     "ports_disabled": "Ports Disabled",
     "ports_disabled_label": "Ports",
     "random_spawn": "Random Spawn",
+    "realistic_world": "Realistic World",
+    "realistic_world_label": "Realistic Nations",
     "sams_disabled": "SAMs Disabled",
     "sams_disabled_label": "SAMs",
     "starting_gold": "{amount}M Starting Gold",
