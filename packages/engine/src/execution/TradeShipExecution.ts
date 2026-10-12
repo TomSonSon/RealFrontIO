@@ -183,9 +183,24 @@ export class TradeShipExecution implements Execution {
   private complete() {
     this.active = false;
     this.tradeShip!.delete(false);
-    const gold = this.mg
-      .config()
-      .tradeShipGold(this.tilesTraveled, this.tradeShip!.owner());
+    const srcOwner = this.srcPort.owner();
+    const dstOwner = this._dstPort.owner();
+    let rel: "self" | "team" | "ally" | "other" = "other";
+    if (srcOwner.id() === dstOwner.id()) rel = "self";
+    else if (srcOwner.isOnSameTeam(dstOwner)) rel = "team";
+    else if (srcOwner.isAlliedWith(dstOwner)) rel = "ally";
+
+    // Relation-scaled trade (Realistic World only): bloc-allied trade is worth
+    // more, rival/neutral trade is tariffed. Classic mode -> multiplier 1.
+    const gold = BigInt(
+      Math.floor(
+        Number(
+          this.mg
+            .config()
+            .tradeShipGold(this.tilesTraveled, this.tradeShip!.owner()),
+        ) * this.mg.config().tradeMultiplier(rel),
+      ),
+    );
 
     if (this.wasCaptured && this.tradeShip!.owner() === this.origOwner) {
       // Retaken by its original owner: the payout stands, but nobody pirated it.

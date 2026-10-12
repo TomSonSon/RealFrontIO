@@ -196,6 +196,24 @@ export class EngineConfig extends Config {
   goldMultiplier(): number {
     return this._gameConfig.goldMultiplier ?? 1;
   }
+  /**
+   * Relation-scaled trade (Realistic World only). Everyone still trades, as in
+   * reality (rivals trade — US-China, India-Russia energy) — but bloc allies
+   * trade deeper (alignment bonus) while neutral/rival trade is tariffed.
+   * Classic mode always returns 1, so behavior is unchanged outside realism.
+   */
+  tradeMultiplier(rel: "self" | "team" | "ally" | "other"): number {
+    if (!this.isRealisticWorld()) return 1;
+    switch (rel) {
+      case "ally":
+        return 1.2; // intra-bloc alignment bonus (8.2)
+      case "team":
+      case "self":
+        return 1;
+      case "other":
+        return 0.7; // tariffed neutral/rival trade (8.1)
+    }
+  }
   startingGold(playerInfo: PlayerInfo): Gold {
     if (playerInfo.playerType === PlayerType.Bot) {
       return 0n;
@@ -260,7 +278,9 @@ export class EngineConfig extends Config {
     }
     const distPenalty = citiesVisited * 5_000;
     const gold = Math.max(5000, baseGold - distPenalty);
-    return toInt(gold * this.goldMultiplierFor(player));
+    return toInt(
+      gold * this.goldMultiplierFor(player) * this.tradeMultiplier(rel),
+    );
   }
 
   trainStationMinRange(): number {

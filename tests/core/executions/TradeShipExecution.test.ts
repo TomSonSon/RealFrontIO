@@ -46,6 +46,8 @@ describe("TradeShipExecution", () => {
       id: vi.fn(() => 1),
       clientID: vi.fn(() => 1),
       canTrade: vi.fn(() => true),
+      isOnSameTeam: vi.fn(() => false),
+      isAlliedWith: vi.fn(() => false),
     } as any;
 
     dstOwner = {
@@ -58,6 +60,8 @@ describe("TradeShipExecution", () => {
       unitCount: vi.fn(() => 1),
       clientID: vi.fn(() => 2),
       canTrade: vi.fn(() => true),
+      isOnSameTeam: vi.fn(() => false),
+      isAlliedWith: vi.fn(() => false),
     } as any;
 
     pirate = {
