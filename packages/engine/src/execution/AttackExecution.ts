@@ -429,15 +429,19 @@ export class AttackExecution implements Execution {
       }
 
       let mag: number;
+      // In Realistic World mode mountains carry a much heavier frontier
+      // penalty, so attack waves spread around (through passes/plains) rather
+      // than charging the range head-on.
+      const realistic = this.mg.config().isRealisticWorld();
       switch (this.map.terrainType(neighbor)) {
         case TerrainType.Plains:
-          mag = 1;
+          mag = realistic ? 1 : 1;
           break;
         case TerrainType.Highland:
-          mag = 1.5;
+          mag = realistic ? 1.8 : 1.5;
           break;
         case TerrainType.Mountain:
-          mag = 2;
+          mag = realistic ? 3.5 : 2;
           break;
         default:
           mag = 0;

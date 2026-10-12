@@ -8,13 +8,15 @@ import {
   PlayerInfo,
   PlayerType,
   Relation,
+  TerrainType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { GameConfig } from "@openfront/engine-api/Schemas";
+import type { AttackLogicInput } from "@openfront/engine/configuration/EngineConfig";
 import { Game, Player } from "@openfront/engine/game/Game";
 import { placeNationCapital } from "@openfront/engine/realism/RealisticWorld";
 import { setup } from "./util/Setup";
-import { TestConfig } from "./util/TestConfig";
+import { TestConfig, UseRealAttackLogic } from "./util/TestConfig";
 
 /**
  * Tests for the optional "Realistic World" mode: nation starting strength
@@ -255,5 +257,53 @@ describe("Realistic World — starting capital city", () => {
     human.conquer(tile);
     placeNationCapital(game, human, tile);
     expect(human.units(UnitType.City)).toHaveLength(0);
+  });
+});
+
+describe("Realistic World — terrain makes mountains a real barrier", () => {
+  function attackInput(terrain: TerrainType): AttackLogicInput {
+    return {
+      terrain,
+      attackTroops: 50_000,
+      attacker: { type: PlayerType.Nation, numTiles: 10_000 },
+      defender: {
+        type: PlayerType.Nation,
+        numTiles: 10_000,
+        troops: 50_000,
+        isTraitor: false,
+        isDisconnectedTeammate: false,
+      },
+      defenderHasDefensePost: false,
+      falloutRatio: null,
+      borderSize: 10,
+    };
+  }
+
+  test("mountains are slower and bloodier to take in Realistic World mode", () => {
+    const realistic = new UseRealAttackLogic(realisticConfig(), false);
+    const normal = new UseRealAttackLogic(baseConfig(), false);
+
+    const r = realistic.attackLogic(attackInput(TerrainType.Mountain));
+    const n = normal.attackLogic(attackInput(TerrainType.Mountain));
+
+    expect(r.tickFraction).toBeGreaterThan(n.tickFraction);
+    expect(r.attackerTroopLoss).toBeGreaterThan(n.attackerTroopLoss);
+  });
+
+  test("Realistic World mode makes mountain chokepoints far costlier than plains", () => {
+    const realistic = new UseRealAttackLogic(realisticConfig(), false);
+    const normal = new UseRealAttackLogic(baseConfig(), false);
+
+    const realisticRatio =
+      realistic.attackLogic(attackInput(TerrainType.Mountain)).tickFraction /
+      realistic.attackLogic(attackInput(TerrainType.Plains)).tickFraction;
+    const normalRatio =
+      normal.attackLogic(attackInput(TerrainType.Mountain)).tickFraction /
+      normal.attackLogic(attackInput(TerrainType.Plains)).tickFraction;
+
+    // Realistic mode widens the mountain-vs-plains gap (strong chokepoints);
+    // the default tuning keeps it modest.
+    expect(realisticRatio).toBeGreaterThan(2);
+    expect(normalRatio).toBeLessThan(2);
   });
 });

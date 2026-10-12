@@ -98,10 +98,32 @@ function largeTerritoryBonus(numTiles: number, depth: number): number {
   );
 }
 
-function terrainAttackBase(terrain: TerrainType): {
+function terrainAttackBase(
+  terrain: TerrainType,
+  realistic: boolean,
+): {
   mag: number;
   tileCost: number;
 } {
+  // Realistic World mode applies steeper terrain penalties (from
+  // research/real-world-realism/05-terrain-and-geography.md): mountains are
+  // far more costly and bloody to take, making them natural defensive lines
+  // and chokepoints that armies prefer to route around (see
+  // AttackExecution.addNeighbors, which deprioritises mountains in this mode).
+  if (realistic) {
+    switch (terrain) {
+      case TerrainType.Plains:
+        return { mag: 75, tileCost: 14 };
+      case TerrainType.Highland:
+        return { mag: 110, tileCost: 26 };
+      case TerrainType.Mountain:
+        return { mag: 170, tileCost: 42 };
+      case TerrainType.Impassable:
+        throw new Error(`impassable terrain cannot be attacked`);
+      default:
+        throw new Error(`terrain type ${terrain} not supported`);
+    }
+  }
   switch (terrain) {
     case TerrainType.Plains:
       return { mag: 80, tileCost: 16.5 };
@@ -507,7 +529,10 @@ export class EngineConfig extends Config {
    */
   attackLogic(input: AttackLogicInput): AttackLogicResult {
     const { attackTroops, attacker, defender } = input;
-    let { mag, tileCost } = terrainAttackBase(input.terrain);
+    let { mag, tileCost } = terrainAttackBase(
+      input.terrain,
+      this.isRealisticWorld(),
+    );
 
     if (defender !== null && input.defenderHasDefensePost) {
       mag *= this.defensePostDefenseBonus();
