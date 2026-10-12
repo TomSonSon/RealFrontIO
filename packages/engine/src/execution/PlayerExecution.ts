@@ -8,7 +8,10 @@ import {
 import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
-import { EngineConfig } from "../configuration/EngineConfig";
+import {
+  coalitionSanctionFactor,
+  EngineConfig,
+} from "../configuration/EngineConfig";
 import { Execution, Game, Player } from "../game/Game";
 import {
   bumpTraversalGeneration,
@@ -126,7 +129,8 @@ export class PlayerExecution implements Execution {
 
     const troopInc = this.config.troopIncreaseRate(this.player);
     this.player.addTroops(troopInc);
-    const goldFromWorkers = this.config.goldAdditionRate(this.player);
+    const baseGold = this.config.goldAdditionRate(this.player);
+    const goldFromWorkers = this.coalitionSanctionedGold(baseGold);
     this.player.addGold(goldFromWorkers);
 
     // Record stats
@@ -162,6 +166,22 @@ export class PlayerExecution implements Execution {
         }
       }
     }
+  }
+
+  /**
+   * Coalition sanctions (Realistic World only): a target's passive income is
+   * reduced the more other players embargo it (isolation / coalition pressure).
+   * Classic mode returns the base rate unchanged.
+   */
+  private coalitionSanctionedGold(base: bigint): bigint {
+    if (!this.config.isRealisticWorld()) return base;
+    let senders = 0;
+    for (const p of this.mg.players()) {
+      if (p.id() === this.player.id()) continue;
+      if (p.hasEmbargoAgainst(this.player)) senders++;
+    }
+    if (senders === 0) return base;
+    return BigInt(Math.floor(Number(base) * coalitionSanctionFactor(senders)));
   }
 
   private removeClusters() {

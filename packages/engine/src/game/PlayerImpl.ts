@@ -830,6 +830,12 @@ export class PlayerImpl implements Player {
       return false;
     }
 
+    // Realistic World: a player who has betrayed this game (reputation below
+    // the floor) can't be trusted to form NEW alliances — per-game only.
+    if (this.mg.config().isRealisticWorld() && this.reputation() < -30) {
+      return false;
+    }
+
     const hasPending = this.outgoingAllianceRequests().some(
       (ar) => ar.recipient() === other,
     );
@@ -927,6 +933,17 @@ export class PlayerImpl implements Player {
 
   betrayals(): number {
     return this._betrayalCount;
+  }
+
+  /**
+   * Per-game reliability (Realistic World only). Betrayals mark the player as
+   * unreliable for the rest of THIS game; there is deliberately no cross-game
+   * persistence. Derived from the already-tracked betrayal count, so no new
+   * snapshot field is needed.
+   */
+  reputation(): number {
+    const rep = -40 * this._betrayalCount;
+    return rep === 0 ? 0 : rep;
   }
 
   createAllianceRequest(recipient: Player): AllianceRequest | null {

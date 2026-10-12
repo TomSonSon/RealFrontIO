@@ -442,6 +442,8 @@ export interface Player extends PlayerLike {
   removeAllAlliances(): void;
   createAllianceRequest(recipient: Player): AllianceRequest | null;
   betrayals(): number;
+  /** Per-game reliability (lower = a traitor nobody trusts this game). Derived, no persistence. */
+  reputation(): number;
 
   // Targeting
   canTarget(other: Player): boolean;

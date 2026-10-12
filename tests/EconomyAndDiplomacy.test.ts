@@ -4,9 +4,14 @@ import {
   GameMapType,
   GameMode,
   GameType,
+  PlayerInfo,
+  PlayerType,
 } from "@openfront/engine-api/game/GameTypes";
 import type { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { GameConfig } from "@openfront/engine-api/Schemas";
+import { coalitionSanctionFactor } from "@openfront/engine/configuration/EngineConfig";
+import { Game, Player } from "@openfront/engine/game/Game";
+import { setup } from "./util/Setup";
 import { TestConfig } from "./util/TestConfig";
 
 /**
@@ -74,5 +79,59 @@ describe("relation-scaled trade (Realistic World)", () => {
     const rRatio = Number(rAlly) / Number(rOther);
     const cRatio = Number(cAlly) / Number(cOther);
     expect(rRatio).toBeGreaterThan(cRatio);
+  });
+});
+
+describe("coalition sanctions (Realistic World §8.4)", () => {
+  test("sanctions stack up to a floor — coordination hurts more", () => {
+    expect(coalitionSanctionFactor(0)).toBe(1);
+    expect(coalitionSanctionFactor(1)).toBe(0.75);
+    expect(coalitionSanctionFactor(2)).toBe(0.5);
+    expect(coalitionSanctionFactor(5)).toBe(0.5); // capped
+    expect(coalitionSanctionFactor(2)).toBeLessThan(coalitionSanctionFactor(1));
+  });
+});
+
+describe("per-game reputation (Realistic World §8.5)", () => {
+  function grantLand(game: Game, players: Player[]): void {
+    let i = 0;
+    game.map().forEachTile((t) => {
+      if (!game.map().isLand(t) || game.map().isImpassable(t)) return;
+      players[i++ % players.length].conquer(t);
+    });
+  }
+
+  test("betrayal tanks reputation THIS game (no persistence)", async () => {
+    const game = await setup("big_plains", {
+      publicGameModifiers: { isRealisticWorld: true },
+    });
+    const a = game.addPlayer(
+      new PlayerInfo("A", PlayerType.Human, null, "a"),
+    ) as Player;
+    const b = game.addPlayer(
+      new PlayerInfo("B", PlayerType.Human, null, "b"),
+    ) as Player;
+    grantLand(game, [a, b]);
+    expect(a.isAlive()).toBe(true);
+
+    expect(a.reputation()).toBe(0);
+    a.markTraitor();
+    expect(a.reputation()).toBeLessThan(0);
+
+    // A betrayer can't form NEW alliances for the rest of this game.
+    expect(a.canSendAllianceRequest(b)).toBe(false);
+  });
+
+  test("classic mode has no reputation gate (behavior unchanged)", async () => {
+    const game = await setup("big_plains", {});
+    const a = game.addPlayer(
+      new PlayerInfo("A", PlayerType.Human, null, "a"),
+    ) as Player;
+    const b = game.addPlayer(
+      new PlayerInfo("B", PlayerType.Human, null, "b"),
+    ) as Player;
+    grantLand(game, [a, b]);
+    a.markTraitor();
+    expect(a.canSendAllianceRequest(b)).toBe(true);
   });
 });
