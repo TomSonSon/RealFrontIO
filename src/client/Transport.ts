@@ -171,6 +171,13 @@ export class SendEmbargoAllIntentEvent implements GameEvent {
   constructor(public readonly action: "start" | "stop") {}
 }
 
+export class SendDeclareCoalitionWarIntentEvent implements GameEvent {
+  constructor(
+    public readonly target: PlayerView,
+    public readonly candidates: PlayerView[],
+  ) {}
+}
+
 export class SendDeleteUnitIntentEvent implements GameEvent {
   constructor(public readonly unitId: number) {}
 }
@@ -320,6 +327,9 @@ export class Transport {
     this.subscribe(SendEmbargoIntentEvent, (e) => this.onSendEmbargoIntent(e));
     this.subscribe(SendEmbargoAllIntentEvent, (e) =>
       this.onSendEmbargoAllIntent(e),
+    );
+    this.subscribe(SendDeclareCoalitionWarIntentEvent, (e) =>
+      this.onSendDeclareCoalitionWarIntent(e),
     );
     this.subscribe(BuildUnitIntentEvent, (e) => this.onBuildUnitIntent(e));
 
@@ -872,6 +882,16 @@ export class Transport {
     this.sendIntent({
       type: "embargo_all",
       action: event.action,
+    });
+  }
+
+  private onSendDeclareCoalitionWarIntent(
+    event: SendDeclareCoalitionWarIntentEvent,
+  ) {
+    this.sendIntent({
+      type: "declare_coalition_war",
+      target: event.target.id(),
+      candidates: event.candidates.map((c) => c.id()),
     });
   }
 

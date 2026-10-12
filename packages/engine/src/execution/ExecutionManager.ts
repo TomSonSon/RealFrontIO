@@ -1,3 +1,4 @@
+import { PlayerID } from "@openfront/engine-api/game/GameTypes";
 import {
   ClientID,
   GameID,
@@ -6,7 +7,8 @@ import {
 } from "@openfront/engine-api/Schemas";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
-import { Execution, Game } from "../game/Game";
+import { Execution, Game, Player } from "../game/Game";
+import type { ExecRecord } from "../snapshot/SnapshotContext";
 import { AllianceExtensionExecution } from "./alliance/AllianceExtensionExecution";
 import { AllianceRejectExecution } from "./alliance/AllianceRejectExecution";
 import { AllianceRequestExecution } from "./alliance/AllianceRequestExecution";
@@ -23,7 +25,7 @@ import { EmojiExecution } from "./EmojiExecution";
 import { MarkDisconnectedExecution } from "./MarkDisconnectedExecution";
 import { MoveWarshipExecution } from "./MoveWarshipExecution";
 import { NationExecution } from "./NationExecution";
-import { NoOpExecution } from "./NoOpExecution";
+import { NoOpExecution, NoOpExecutionSnapshot } from "./NoOpExecution";
 import { PauseExecution } from "./PauseExecution";
 import { QuickChatExecution } from "./QuickChatExecution";
 import { RetreatExecution } from "./RetreatExecution";
@@ -115,6 +117,12 @@ export class Executor {
         return new EmbargoExecution(player, intent.targetID, intent.action);
       case "embargo_all":
         return new EmbargoAllExecution(player, intent.action);
+      case "declare_coalition_war":
+        return new DeclareCoalitionWarExecution(
+          player,
+          intent.target,
+          intent.candidates,
+        );
       case "build_unit":
         return new ConstructionExecution(
           player,
@@ -172,5 +180,51 @@ export class Executor {
       execs.push(new NationExecution(this.gameID_, nation));
     }
     return execs;
+  }
+}
+
+/**
+ * §8.6 coalition war declaration execution (Realistic World only). The
+ * declaration is committed synchronously in init() from the intent's target
+ * and candidates (resolved to Players by id): the engine's
+ * Game.declareCoalitionWar resolves each candidate's vote via
+ * NationCoalitionBehavior and commits the joiners (hostile + embargo).
+ * Classic mode (no realism) returns [] and leaves everything untouched, so
+ * this execution is a harmless no-op outside Realistic World too.
+ *
+ * It runs once during the tick that adds it and is immediately inactive, so it
+ * never survives a tick boundary and needs no snapshot state of its own — the
+ * committed war is fully reflected in engine state (relations/embargoes), not
+ * in this execution object. snapshot() reuses the NoOp snapshot type so no
+ * ExecutionRegistry entry is required.
+ */
+class DeclareCoalitionWarExecution implements Execution {
+  constructor(
+    private initiator: Player,
+    private targetID: PlayerID,
+    private candidateIDs: PlayerID[],
+  ) {}
+
+  isActive(): boolean {
+    return false;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  init(mg: Game): void {
+    if (!mg.hasPlayer(this.targetID)) return;
+    const target = mg.player(this.targetID);
+    const candidates = this.candidateIDs
+      .filter((id) => mg.hasPlayer(id))
+      .map((id) => mg.player(id));
+    mg.declareCoalitionWar(this.initiator, target, candidates);
+  }
+
+  tick(): void {}
+
+  snapshot(): ExecRecord {
+    return NoOpExecutionSnapshot.write({});
   }
 }

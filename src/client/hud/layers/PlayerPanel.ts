@@ -35,6 +35,7 @@ import {
   PlayerReportedEvent,
   SendAllianceRequestIntentEvent,
   SendBreakAllianceIntentEvent,
+  SendDeclareCoalitionWarIntentEvent,
   SendEmbargoAllIntentEvent,
   SendEmbargoIntentEvent,
   SendEmojiIntentEvent,
@@ -61,6 +62,7 @@ const targetIcon = assetUrl("images/TargetIconWhite.svg");
 const startTradingIcon = assetUrl("images/TradingIconWhite.svg");
 const traitorIcon = assetUrl("images/TraitorIconLightRed.svg");
 const breakAllianceIcon = assetUrl("images/TraitorIconWhite.svg");
+const declareCoalitionWarIcon = assetUrl("images/SwordIconWhite.svg");
 
 // The viewer's own badge from their /users/@me progress. Shown even when they
 // hide their level from others, as their profile does.
@@ -327,6 +329,49 @@ export class PlayerPanel extends LitElement implements Controller {
   ) {
     e.stopPropagation();
     this.eventBus.emit(new SendEmbargoIntentEvent(other, "stop"));
+    this.hide();
+  }
+
+  // §8.6 coalition war declaration — offered only in Realistic World games
+  // (where the engine's declareCoalitionWar does anything). Invites the
+  // viewer's current allies as candidate voters.
+  private isCoalitionWarEnabled(): boolean {
+    return (
+      this.g.config().gameConfig().publicGameModifiers?.isRealisticWorld ===
+      true
+    );
+  }
+
+  private handleDeclareCoalitionWarClick(
+    e: Event,
+    myPlayer: PlayerView,
+    other: PlayerView,
+  ) {
+    e.stopPropagation();
+    if (!this.isCoalitionWarEnabled()) {
+      showToast(
+        translateText("player_panel.declare_coalition_war_disabled"),
+        "red",
+      );
+      return;
+    }
+    const candidates = myPlayer.allies();
+    if (candidates.length === 0) {
+      showToast(
+        translateText("player_panel.declare_coalition_war_no_allies"),
+        "red",
+      );
+      return;
+    }
+    this.eventBus.emit(
+      new SendDeclareCoalitionWarIntentEvent(other, candidates),
+    );
+    showToast(
+      translateText("player_panel.declare_coalition_war_sent", {
+        name: other.displayName(),
+      }),
+      "green",
+    );
     this.hide();
   }
 
@@ -961,6 +1006,21 @@ export class PlayerPanel extends LitElement implements Controller {
                       label: translateText("player_panel.start_trade"),
                       type: "green",
                     })}
+                ${this.isCoalitionWarEnabled()
+                  ? actionButton({
+                      onClick: (e: MouseEvent) =>
+                        this.handleDeclareCoalitionWarClick(e, my, other),
+                      icon: declareCoalitionWarIcon,
+                      iconAlt: "Declare Coalition War",
+                      title: translateText(
+                        "player_panel.declare_coalition_war",
+                      ),
+                      label: translateText(
+                        "player_panel.declare_coalition_war",
+                      ),
+                      type: "red",
+                    })
+                  : ""}
                 ${canBreakAlliance
                   ? actionButton({
                       onClick: (e: MouseEvent) =>
