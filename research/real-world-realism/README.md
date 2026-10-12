@@ -2,6 +2,8 @@
 
 **Goal:** Make OpenFront's nation simulation dramatically more realistic by starting from the *current real world* — real power dynamics (who likes who), real military capacity per country, real military bases / cities / industrial hubs, and geographically accurate terrain — and by making terrain *meaningfully* shape combat (mountain passes, deserts, rivers, chokepoints).
 
+> **Implementation wiki:** for how the shipped code actually works — every mechanic, interaction, and the exact weightings/constants — see [`REALISM-MODE-WIKI.md`](REALISM-MODE-WIKI.md). Ownership of contributed work: see `SANOLABS-LEGAL-NOTICE.md`.
+
 > This folder is **research only — no game code.** It is the reference the engine implementation reads. Each file cites its sources. Treat every number as a starting point to be tuned in playtests, not gospel.
 
 ---
