@@ -21,6 +21,7 @@ import {
 } from "@openfront/engine-lib/Util";
 import type { EngineUnitInfo, Game, Player, Unit } from "../game/Game";
 import { realisticSeedFor } from "../realism/RealisticWorld";
+import { IDENTITY_MULTIPLIERS, TechMultipliers } from "../realism/TechTree";
 
 export interface AttackLogicInput {
   terrain: TerrainType;
@@ -41,6 +42,14 @@ export interface AttackLogicInput {
   falloutRatio: number | null;
   /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
   borderSize: number;
+  /**
+   * Realistic World tech tree: the attacker's Military combat-power factor
+   * (1 = no tech / classic). Applied to the per-tile loss denominators so a
+   * better-equipped attacker takes fewer losses and inflicts more. Optional and
+   * defaults to 1; the live sim populates it once calling attacks carry the
+   * owner's factor (see techMultipliersFor / AttackExecution).
+   */
+  attackerCombatPower?: number;
 }
 
 export interface AttackLogicResult {
@@ -186,6 +195,34 @@ export class EngineConfig extends Config {
   }
   isRealisticWorld(): boolean {
     return this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false;
+  }
+
+  // --- Tech tree (Realistic World only) ---
+  //
+  // The game stores each player's owned tech-tree nodes (in GameImpl) and hands
+  // this config a lookup so the existing multiplier methods below can apply the
+  // per-player deterministic effects. The provider closes over the live game, so
+  // reads are always current. With no provider, or outside Realistic World, every
+  // multiplier is identity (classic mode byte-for-byte unchanged).
+  private _techTreeProvider: ((player: PlayerLike) => TechMultipliers) | null =
+    null;
+
+  /** Sets (or clears) the per-player tech multiplier lookup. Engine-side only. */
+  setTechTreeProvider(
+    provider: ((player: PlayerLike) => TechMultipliers) | null,
+  ): void {
+    this._techTreeProvider = provider;
+  }
+
+  /**
+   * The per-player tech multipliers, or identity when the tech tree is off
+   * (classic mode) or no provider is wired up. Gated behind isRealisticWorld().
+   */
+  private techMultipliersFor(player: PlayerLike): TechMultipliers {
+    if (!this.isRealisticWorld()) return IDENTITY_MULTIPLIERS;
+    return this._techTreeProvider
+      ? this._techTreeProvider(player)
+      : IDENTITY_MULTIPLIERS;
   }
 
   bots(): number {
@@ -489,7 +526,13 @@ export class EngineConfig extends Config {
           Math.min(player.unitsOwned(type), player.unitsConstructed(type)),
         0,
       );
-      return BigInt(costFn(numUnits + extraUnits));
+      // Tech-tree structure cost reduction (Realistic World): the ECONOMY
+      // Industrial Base node flattens the escalating cost curve by a small
+      // deterministic factor. Identity (1) outside realism.
+      const structureCost = this.techMultipliersFor(player).structureCost;
+      const base = costFn(numUnits + extraUnits);
+      if (structureCost === 1) return BigInt(base);
+      return BigInt(Math.max(0, Math.floor(base * structureCost)));
     };
   }
 
@@ -640,9 +683,13 @@ export class EngineConfig extends Config {
       attacker.numTiles,
       LARGE_ATTACKER_SPEED_DEPTH,
     );
+    // Realistic World tech tree: the attacker's Military combat power scales
+    // the exchange — a better-equipped stack bleeds less per tile and inflicts
+    // more. Identity (1) outside realism / without the field set.
+    const attackerCombatPower = input.attackerCombatPower ?? 1;
     return {
-      attackerTroopLoss,
-      defenderTroopLoss,
+      attackerTroopLoss: attackerTroopLoss / attackerCombatPower,
+      defenderTroopLoss: defenderTroopLoss * attackerCombatPower,
       tickFraction:
         (speedCost *
           tileCost *
@@ -657,7 +704,9 @@ export class EngineConfig extends Config {
     attacker: PlayerLike,
     defender: PlayerLike | TerraNullius,
   ): number {
-    return Math.floor(attacker.troops() / 5);
+    return Math.floor(
+      (attacker.troops() / 5) * this.techMultipliersFor(attacker).attackPower,
+    );
   }
 
   warshipShellLifetime(): number {
@@ -680,7 +729,9 @@ export class EngineConfig extends Config {
     if (attacker.type() === PlayerType.Bot) {
       return attacker.troops() / 20;
     } else {
-      return attacker.troops() / 5;
+      return Math.floor(
+        (attacker.troops() / 5) * this.techMultipliersFor(attacker).attackPower,
+      );
     }
   }
 
@@ -715,7 +766,11 @@ export class EngineConfig extends Config {
   }
 
   goldAdditionRate(player: PlayerLike): Gold {
-    const multiplier = this.goldMultiplierFor(player);
+    // Realistic World tech tree: the ECONOMY branch's gold-income nodes scale
+    // the passive rate (identity = 1 outside realism).
+    const multiplier =
+      this.goldMultiplierFor(player) *
+      this.techMultipliersFor(player).goldIncome;
     let baseRate: bigint;
     if (player.type() === PlayerType.Bot) {
       baseRate = 50n;
@@ -723,6 +778,18 @@ export class EngineConfig extends Config {
       baseRate = 100n;
     }
     return BigInt(Math.floor(Number(baseRate) * multiplier));
+  }
+
+  /**
+   * Troop regeneration (Realistic World tech tree): the MILITARY branch's
+   * troop-regen nodes scale the passive per-tick regeneration. Delegates to the
+   * base rate and scales its result, so the ordering rules in Config are the
+   * same outside realism. Deterministic: the base rate is pure.
+   */
+  override troopIncreaseRate(player: PlayerLike): number {
+    const base = super.troopIncreaseRate(player);
+    const troopRegen = this.techMultipliersFor(player).troopRegen;
+    return troopRegen === 1 ? base : Math.round(base * troopRegen);
   }
 
   nukeSpeed(unitType: UnitType): number {

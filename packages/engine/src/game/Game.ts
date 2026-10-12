@@ -582,6 +582,18 @@ export interface Game extends GameLike {
   isPaused(): boolean;
   setPaused(paused: boolean): void;
 
+  // Realistic World tech tree (identity in classic mode).
+  /** Owned tech-node ids for a player (empty array when none / none owned). */
+  ownedTechNodeIds(player: Player): readonly string[];
+  /** Whether the player can currently purchase `nodeId` (unlocked, uncapped, affordable). */
+  canPurchaseTech(player: Player, nodeId: string): boolean;
+  /**
+   * Spend gold to unlock a tech node. Permanent within the match (no refunds),
+   * like a directional commitment. Realistic World only; returns false when the
+   * tree is off, the node is not purchasable, or the player cannot afford it.
+   */
+  spendTech(player: Player, nodeId: string): boolean;
+
   // Units
   unit(id: number): Unit | undefined;
   // See Player.units() for why this is not a rest parameter.
@@ -647,6 +659,7 @@ export interface Game extends GameLike {
 
   addUpdate(update: GameUpdate): void;
   railNetwork(): RailNetwork;
+  // Militrary MIRVs
   /** MIRVs launched so far by anyone; each one raises the next one's price. */
   mirvsLaunched(): number;
   recordMirvLaunch(): void;

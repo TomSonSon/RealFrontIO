@@ -26,7 +26,10 @@ import {
   GameUpdate,
   GameUpdateType,
 } from "@openfront/engine-api/game/GameUpdates";
-import { UnitPredicate } from "@openfront/engine-api/game/ReadViews";
+import {
+  PlayerLike,
+  UnitPredicate,
+} from "@openfront/engine-api/game/ReadViews";
 import {
   AllPlayersStats,
   ClientID,
@@ -65,6 +68,16 @@ import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathFinder } from "../pathfinding/types";
 import { realisticRelationsFor } from "../realism/RealisticWorld";
+import {
+  allNodeIds,
+  canPurchase,
+  CAP_TOTAL_RANKS,
+  computeMultipliers,
+  IDENTITY_MULTIPLIERS,
+  nodeById,
+  TechMultipliers,
+  TechTreeSnapshot,
+} from "../realism/TechTree";
 import {
   nationData,
   NationSchema,
@@ -162,6 +175,13 @@ export class GameImpl implements Game {
   private shipStaggers = { tradeShip: 0, transportShip: 0 };
   private _nationMirvTargets = new Map<PlayerID, Tick>();
 
+  /**
+   * Realistic World tech tree: owned tech-node ids per player, keyed by smallID
+   * (the fixed roster order). Game-level state so it snapshots deterministically
+   * without touching per-player schemas. Empty in classic mode.
+   */
+  private _techRanks = new Map<number, string[]>();
+
   private _isPaused: boolean = false;
   private _winner: Player | Team | null = null;
   private _waterManager: WaterManager;
@@ -195,6 +215,11 @@ export class GameImpl implements Game {
       _config.disableNavMesh(),
     );
     this._sharedWaterCache = new SharedWaterCache(this);
+
+    // Wire the tech-tree multiplier lookup so EngineConfig's per-player effects
+    // (troop regen, gold income, structure cost, attack power) read this game's
+    // owned ranks. Reads are live, so spends take effect on the next read.
+    _config.setTechTreeProvider((player) => this.techMultipliersFor(player));
 
     if (!restoring) {
       if (_config.gameConfig().gameMode === GameMode.Team) {
@@ -545,6 +570,11 @@ export class GameImpl implements Game {
   executeNextTick(): GameUpdates {
     this.updates = createGameUpdatesMap();
     this.tileUpdatePairs.length = 0;
+    // Nations' default tech-tree spending (Realistic World only), trickled out
+    // on an interval. Deterministic with respect to game state.
+    if (this._ticks > 0 && this._ticks % GameImpl.TECH_POLICY_INTERVAL === 0) {
+      this.applyNationTechPolicy();
+    }
     this.execs.forEach((e) => {
       if (
         (!this.inSpawnPhase() || e.activeDuringSpawnPhase()) &&
@@ -1506,6 +1536,117 @@ export class GameImpl implements Game {
    * per-tick update buffers (updates, tile pairs, player and attack quads,
    * motion plans, nuke impacts) are always drained and are not stored.
    */
+
+  // --- Realistic World tech tree ---
+
+  private techRanksFor(player: Player): string[] {
+    const ranks = this._techRanks.get(player.smallID());
+    return ranks ?? [];
+  }
+
+  /** The deterministic multipliers for a player, or identity outside realism. */
+  private techMultipliersFor(player: PlayerLike): TechMultipliers {
+    if (!this._config.isRealisticWorld()) return IDENTITY_MULTIPLIERS;
+    const ranks = this._techRanks.get(player.smallID());
+    return ranks === undefined || ranks.length === 0
+      ? IDENTITY_MULTIPLIERS
+      : computeMultipliers(new Set(ranks));
+  }
+
+  ownedTechNodeIds(player: Player): readonly string[] {
+    return this.techRanksFor(player).slice();
+  }
+
+  canPurchaseTech(player: Player, nodeId: string): boolean {
+    if (!this._config.isRealisticWorld()) return false;
+    const owned = new Set(this.techRanksFor(player));
+    if (!canPurchase(owned, nodeId)) return false;
+    const node = nodeById(nodeId);
+    if (node === undefined) return false;
+    return player.gold() >= BigInt(node.cost);
+  }
+
+  /**
+   * Per-game, permanent tech purchase (no refunds). Deterministic and gated
+   * behind Realistic World. Again gated on the caller actually being the owner
+   * of the gold (gold is deducted here). Returns false and changes nothing when
+   * the tree is off or the purchase is not valid.
+   */
+  spendTech(player: Player, nodeId: string): boolean {
+    if (!this._config.isRealisticWorld()) return false;
+    const owned = new Set(this.techRanksFor(player));
+    if (!canPurchase(owned, nodeId)) return false;
+    const node = nodeById(nodeId);
+    if (node === undefined) return false;
+    const cost = BigInt(node.cost);
+    if (player.gold() < cost) return false;
+
+    const removed = player.removeGold(cost);
+    if (removed === 0n) return false;
+    const ranks = this.techRanksFor(player);
+    ranks.push(nodeId);
+    this._techRanks.set(player.smallID(), ranks);
+    return true;
+  }
+
+  /**
+   * Nations' default tech-spend policy (Realistic World only). A simple,
+   * deterministic heuristic so bot nations actually use the tree instead of
+   * letting gold idle. Rich nations (>= RICH_GOLD_THRESHOLD) build the ECONOMY
+   * budget first (it funds the rest); the rest build MILITARY staying-power
+   * first. Within the chosen branch they complete tiers in order (cheapest
+   * affordable unlocked first). Same on every client because it reads only
+   * deterministic state (gold, owned ranks). One purchase per nation per policy
+   * tick, so spending trickles out rather than dumping instantly.
+   */
+  private static readonly TECH_POLICY_INTERVAL = 100; // ~10s
+  private static readonly RICH_GOLD_THRESHOLD = 200_000n;
+
+  private applyNationTechPolicy(): void {
+    if (!this._config.isRealisticWorld()) return;
+    const nations = [...this._players.values()]
+      .filter((p) => p.type() === PlayerType.Nation)
+      .sort((a, b) => a.smallID() - b.smallID());
+    for (const nation of nations) {
+      if (!nation.isAlive()) continue;
+      const economyFirst = nation.gold() >= GameImpl.RICH_GOLD_THRESHOLD;
+      const branches = economyFirst
+        ? (["economy", "military"] as const)
+        : (["military", "economy"] as const);
+      const owned = new Set(this.techRanksFor(nation));
+      if (owned.size >= CAP_TOTAL_RANKS) continue;
+      let bought = false;
+      for (const branch of branches) {
+        if (bought) break;
+        for (const id of allNodeIds()) {
+          const node = nodeById(id);
+          if (node === undefined || node.branch !== branch) continue;
+          if (!canPurchase(owned, id)) continue;
+          if (nation.gold() < BigInt(node.cost)) continue;
+          this.spendTechInternal(nation, id);
+          owned.add(id);
+          bought = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /** Internal spend without re-checking the owner/realism gate (policy path). */
+  private spendTechInternal(player: Player, nodeId: string): void {
+    const node = nodeById(nodeId)!;
+    player.removeGold(BigInt(node.cost));
+    const ranks = this.techRanksFor(player);
+    ranks.push(nodeId);
+    this._techRanks.set(player.smallID(), ranks);
+  }
+
+  /** Deterministic snapshot of the tech tree, sorted by smallID. */
+  private techSnapshot(): { entries: [number, string[]][] } {
+    const entries = [...this._techRanks.entries()].sort((a, b) => a[0] - b[0]);
+    return { entries };
+  }
+
   snapshotState(w: SnapshotWriter): GameState {
     // Exec list order is state: register both lists first so their table
     // rows come out in tick order.
@@ -1550,6 +1691,7 @@ export class GameImpl implements Game {
         this._sharedWaterCache.snapshot(w),
       ),
       stats: w.versioned(StatsSnapshot, (this._stats as StatsImpl).snapshot()),
+      tech: w.versioned(TechTreeSnapshot, this.techSnapshot()),
     };
   }
 
@@ -1609,6 +1751,11 @@ export class GameImpl implements Game {
     );
     (this._stats as StatsImpl).restoreSnapshot(
       readVersioned(StatsSnapshot, s.stats),
+    );
+    this._techRanks = new Map(
+      readVersioned(TechTreeSnapshot, s.tech).entries.map(
+        ([smallID, ranks]) => [smallID, [...ranks]],
+      ),
     );
   }
 
@@ -1698,7 +1845,7 @@ export class GameImpl implements Game {
 
 export const GameSnapshot = snapshotType({
   name: "Game",
-  version: 1,
+  version: 2,
   schema: z.object({
     ticks: zInt(),
     startTick: zInt().nullable(),
@@ -1732,7 +1879,16 @@ export const GameSnapshot = snapshotType({
     water: VersionedSchema,
     sharedWaterCache: VersionedSchema,
     stats: VersionedSchema,
+    tech: VersionedSchema,
   }),
+  // v1 -> v2: the Realistic World tech tree gains a game-level `tech` record.
+  // Older games had no tech tree, so restore as empty.
+  migrations: {
+    1: (d: unknown) => {
+      const old = d as Record<string, unknown>;
+      return { ...old, tech: { v: 1, d: { entries: [] } } };
+    },
+  },
 });
 export type GameState = z.infer<typeof GameSnapshot.schema>;
 
