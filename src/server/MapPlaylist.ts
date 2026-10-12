@@ -68,6 +68,7 @@ type ModifierKey =
   | "isCompact"
   | "isCrowded"
   | "isHardNations"
+  | "isRealisticWorld"
   | "startingGold1M"
   | "startingGold5M"
   | "startingGold25M"
@@ -86,6 +87,7 @@ const SPECIAL_MODIFIER_POOL: ModifierKey[] = [
   ...Array<ModifierKey>(4).fill("isCompact"),
   ...Array<ModifierKey>(2).fill("isCrowded"),
   ...Array<ModifierKey>(1).fill("isHardNations"),
+  ...Array<ModifierKey>(2).fill("isRealisticWorld"),
   ...Array<ModifierKey>(2).fill("startingGold1M"),
   ...Array<ModifierKey>(4).fill("startingGold5M"),
   ...Array<ModifierKey>(3).fill("startingGold25M"),
@@ -114,6 +116,7 @@ const MUTUALLY_EXCLUSIVE_MODIFIERS: [ModifierKey, ModifierKey][] = [
   ["startingGold5M", "startingGold1M"],
   ["startingGold25M", "startingGold1M"],
   ["isHardNations", "startingGold25M"],
+  ["isRealisticWorld", "isAlliancesDisabled"],
   ["isNukesDisabled", "isSAMsDisabled"],
   ["isNukesDisabled", "isWaterNukes"],
 ];
@@ -319,6 +322,7 @@ export class MapPlaylist {
       goldMultiplier,
       isAlliancesDisabled,
       isHardNations,
+      isRealisticWorld,
       isNukesDisabled,
       isSAMsDisabled,
       isPeaceTime,
@@ -331,6 +335,7 @@ export class MapPlaylist {
     if (appliedForced.has("isCompact")) isCompact = true;
     if (appliedForced.has("isCrowded")) isCrowded = true;
     if (appliedForced.has("isHardNations")) isHardNations = true;
+    if (appliedForced.has("isRealisticWorld")) isRealisticWorld = true;
     if (appliedForced.has("startingGold1M")) startingGold = 1_000_000;
     if (appliedForced.has("startingGold5M")) startingGold = 5_000_000;
     if (appliedForced.has("startingGold25M")) startingGold = 25_000_000;
@@ -382,6 +387,7 @@ export class MapPlaylist {
             isDoomsdayClock,
           } = fallback);
           ({ isHardNations } = fallback);
+          ({ isRealisticWorld } = fallback);
         }
       }
     }
@@ -440,6 +446,7 @@ export class MapPlaylist {
         isRandomSpawn,
         isCrowded,
         isHardNations,
+        isRealisticWorld,
         startingGold,
         goldMultiplier,
         isAlliancesDisabled,
@@ -762,6 +769,7 @@ export class MapPlaylist {
       isCompact: selected.has("isCompact") || undefined,
       isCrowded: selected.has("isCrowded") || undefined,
       isHardNations: selected.has("isHardNations") || undefined,
+      isRealisticWorld: selected.has("isRealisticWorld") || undefined,
       startingGold: selected.has("startingGold25M")
         ? 25_000_000
         : selected.has("startingGold5M")

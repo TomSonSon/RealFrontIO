@@ -158,6 +158,7 @@ export interface PublicGameModifiers {
   isRandomSpawn?: boolean;
   isCrowded?: boolean;
   isHardNations?: boolean;
+  isRealisticWorld?: boolean;
   startingGold?: number;
   goldMultiplier?: number;
   isAlliancesDisabled?: boolean;

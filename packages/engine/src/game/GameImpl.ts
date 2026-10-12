@@ -62,6 +62,7 @@ import {
 import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathFinder } from "../pathfinding/types";
+import { realisticRelationsFor } from "../realism/RealisticWorld";
 import {
   nationData,
   NationSchema,
@@ -198,6 +199,7 @@ export class GameImpl implements Game {
         this.populateTeams();
       }
       this.addPlayers();
+      this.seedRealisticRelations();
     }
 
     console.log(
@@ -742,6 +744,30 @@ export class GameImpl implements Game {
     this.nextPlayerID++;
     this._players.set(playerInfo.id, player);
     return player;
+  }
+
+  /**
+   * Realistic World mode: seed nation-to-nation starting relations so early
+   * diplomacy mirrors the real world (who is allied, who is hostile). No-op in
+   * any other mode. Runs once after every player is added; seeded relations
+   * decay back toward neutral over time like any other relation.
+   */
+  private seedRealisticRelations(): void {
+    if (!this._config.isRealisticWorld()) {
+      return;
+    }
+    const players = [...this._players.values()];
+    for (const a of players) {
+      if (a.type() !== PlayerType.Nation) continue;
+      const rels = realisticRelationsFor(a.name());
+      if (rels === undefined) continue;
+      for (const b of players) {
+        if (b === a || b.type() !== PlayerType.Nation) continue;
+        const score = rels[b.name()];
+        if (score === undefined || score === 0) continue;
+        a.updateRelation(b, score);
+      }
+    }
   }
 
   private maybeAssignTeam(player: PlayerInfo): Team | null {

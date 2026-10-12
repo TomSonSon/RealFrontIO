@@ -260,6 +260,7 @@ export const GameConfigSchema = z.object({
       isRandomSpawn: z.boolean().optional(),
       isCrowded: z.boolean().optional(),
       isHardNations: z.boolean().optional(),
+      isRealisticWorld: z.boolean().optional(),
       startingGold: zb.uint().optional(),
       goldMultiplier: zb.float({ min: 0.1, max: 1000 }).optional(),
       isAlliancesDisabled: z.boolean().optional(),

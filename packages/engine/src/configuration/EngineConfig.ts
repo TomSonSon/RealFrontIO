@@ -20,6 +20,7 @@ import {
   within,
 } from "@openfront/engine-lib/Util";
 import type { EngineUnitInfo, Game, Player, Unit } from "../game/Game";
+import { realisticSeedFor } from "../realism/RealisticWorld";
 
 export interface AttackLogicInput {
   terrain: TerrainType;
@@ -150,6 +151,9 @@ export class EngineConfig extends Config {
 
   spawnNations(): boolean {
     return this._gameConfig.nations !== "disabled";
+  }
+  isRealisticWorld(): boolean {
+    return this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false;
   }
 
   bots(): number {
@@ -399,6 +403,15 @@ export class EngineConfig extends Config {
   }
 
   private startingGoldFor(playerInfo: PlayerInfo): Gold {
+    if (
+      this.isRealisticWorld() &&
+      playerInfo.playerType === PlayerType.Nation
+    ) {
+      const seed = realisticSeedFor(playerInfo.name);
+      if (seed !== undefined) {
+        return BigInt(seed.gold);
+      }
+    }
     const base = BigInt(this._gameConfig.startingGold ?? 0);
     const hc = this._gameConfig.hostCheats;
     if (hc?.startingGold && playerInfo.isLobbyCreator) {
@@ -617,6 +630,15 @@ export class EngineConfig extends Config {
   }
 
   startManpower(playerInfo: PlayerInfo): number {
+    if (
+      this.isRealisticWorld() &&
+      playerInfo.playerType === PlayerType.Nation
+    ) {
+      const seed = realisticSeedFor(playerInfo.name);
+      if (seed !== undefined) {
+        return seed.troops;
+      }
+    }
     if (playerInfo.playerType === PlayerType.Bot) {
       return 10_000;
     }
