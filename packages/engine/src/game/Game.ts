@@ -444,7 +444,6 @@ export interface Player extends PlayerLike {
   betrayals(): number;
   /** Per-game reliability (lower = a traitor nobody trusts this game). Derived, no persistence. */
   reputation(): number;
-
   // Targeting
   canTarget(other: Player): boolean;
   target(other: Player): void;
@@ -545,6 +544,17 @@ export interface Game extends GameLike {
 
   // Alliances
   expireAlliance(alliance: Alliance): void;
+  /**
+   * §8.6 coalition war declaration. `initiator` proposes a war on `target` to
+   * `candidates`; each friendly candidate that votes yes joins (becomes
+   * hostile with the target and auto-sanctions it). Returns who joined.
+   * Bot members decide via NationCoalitionBehavior.
+   */
+  declareCoalitionWar(
+    initiator: Player,
+    target: Player,
+    candidates: Player[],
+  ): Player[];
 
   // Immunity timer
   isSpawnImmunityActive(): boolean;

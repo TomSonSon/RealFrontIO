@@ -44,6 +44,7 @@ import {
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
+import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
   snapshotType,
@@ -55,6 +56,7 @@ import {
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { EngineConfig } from "../configuration/EngineConfig";
+import { NationCoalitionBehavior } from "../execution/nation/NationCoalitionBehavior";
 import {
   SharedWaterCache,
   SharedWaterCacheSnapshot,
@@ -995,6 +997,38 @@ export class GameImpl implements Game {
     const recipient = alliance.recipient() as PlayerImpl;
     requestor._alliances = requestor._alliances.filter((a) => a !== alliance);
     recipient._alliances = recipient._alliances.filter((a) => a !== alliance);
+  }
+
+  /**
+   * §8.6 coalition war declaration (Realistic World only): `initiator`
+   * proposes a war on `target`; each friendly `candidate` that votes YES joins
+   * — becoming Hostile with the target and auto-sanctioning it (ties §8.4).
+   * Returns the members who joined. Deterministic; bots decide via
+   * NationCoalitionBehavior.
+   */
+  declareCoalitionWar(
+    initiator: Player,
+    target: Player,
+    candidates: Player[],
+  ): Player[] {
+    if (!this._config.isRealisticWorld()) return [];
+    const joined: Player[] = [];
+    for (const c of candidates) {
+      if (c === initiator || c === target) continue;
+      if (!initiator.isFriendly(c)) continue; // only allies tag along
+      if (c.isFriendly(target)) continue; // never join a war on a friend
+      const random = new PseudoRandom(
+        simpleHash(c.id()) + simpleHash(target.id()),
+      );
+      if (
+        new NationCoalitionBehavior(random, this, c).voteYes(initiator, target)
+      ) {
+        c.updateRelation(target, -100); // hostile to the target
+        c.addEmbargo(target, false); // auto-sanction (8.4)
+        joined.push(c);
+      }
+    }
+    return joined;
   }
 
   public isSpawnImmunityActive(): boolean {
