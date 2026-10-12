@@ -25,7 +25,7 @@ on:
 
 jobs:
   review:
-    uses: openfrontio/.github/.github/workflows/claude-code-review.yml@main
+    uses: openfrontio/.github/.github/workflows/claude-code-review.yml@d3700e50e4f107046898c3c8516ecc9db0beeced # main
     with:
       runner: ubuntu-latest
     secrets: inherit
