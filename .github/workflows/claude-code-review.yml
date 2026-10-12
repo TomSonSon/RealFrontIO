@@ -7,7 +7,7 @@
 # plain pull_request run from a fork gets no secrets. The shared workflow
 # detects this event and switches to the fork-safe auth mode (base-branch
 # checkout, explicit github_token, comments as github-actions[bot]). Same
-# pattern as pr-gate.yml and pr-author.yml.
+# pattern as pr-author.yml.
 name: 🤖 Claude Code Review
 
 on:
