@@ -17,6 +17,9 @@
 | [`05-terrain-and-geography.md`](05-terrain-and-geography.md) | What the ground is like | All major mountain ranges (with **lat/long bounding boxes**), deserts, rivers, straits/chokepoints, forests/steppe; how terrain humanly shapes warfare; and **Movement/attack-cost + impassable-wall implementation guidance** so mountains become real barriers with passes. |
 | [`06-coordinate-mapping.md`](06-coordinate-mapping.md) | How lat/long → game pixels | The World map projection, the conversion formulas, a calibration table vs existing nation spawns, and the snap-to-land workflow. |
 | [`07-data-sources.md`](07-data-sources.md) | Where the data comes from | Primary sources (IISS, SIPRI, FAS, ACA, World Bank) with licensing, and the **freely downloadable geographic datasets** (NASA SRTM/NASADEM, Copernicus GLO-30, ESA Sentinel-2) for rebuilding terrain. |
+| [`08-game-dynamics-notes.md`](08-game-dynamics-notes.md) | Economic & diplomatic dynamics (brief) | Open-questions brief (starting money/people, alliance-scoped trade, boycotts↔alliances, coalition attacks, right-of-passage) mapped to what the engine does today — the running brief for `10`. |
+| [`09-war-dynamics.md`](09-war-dynamics.md) | How wars are actually fought | Concentration of force (Schwerpunkt/main effort), fronts & axes, interior lines, attrition/exhaustion, logistics, defense-in-depth, surprise/morale — and a **prioritized, engine-grounded design for region/front-focused attacks** (the "push this region harder" feature). |
+| [`10-economics-and-diplomacy.md`](10-economics-and-diplomacy.md) | Deep economy & diplomacy dynamics | Who trades with whom, sanctions & boycotts (real cases), alliances & reputation/betrayal, coalitions & joint action, right-of-passage/basing, strategic resources & chokepoints — each mapped to the engine with a prioritized design. |
 
 ---
 
@@ -33,12 +36,18 @@ OpenFront already has most of the *machinery* — it just starts from a flat, eq
 | **`City` / `Factory` structures** | `04-cities-and-industry.md` → place starting cities at capitals/major metro, factories at arms hubs | `UnitType.City` / `UnitType.Factory` placements at game start |
 | **`Port` / `MissileSilo` / `SAMLauncher` / `DefensePost`** starts | `03-military-bases.md` → place strategic forward bases & silos | Same unit enums, placed in the spawn/start state |
 
-## 3. Recommended implementation roadmap
+## 3. Implementation status & roadmap
 
-1. **Terrain first** (biggest visual + gameplay lever): use a public DEM (SRTM/GLO-30 — see `07-data-sources.md`) to regenerate `image.png` so real ranges appear, make peaks >~5000 m **impassable** (forcing passes), and add the movement/attack terrain multipliers from `05-terrain-and-geography.md` §9. This requires extending `terrainAttackBase()` + pathfinding with a `moveCost` per terrain.
-2. **Power dynamics**: seed starting `Relation`s from `01-power-dynamics-and-alliances.md` (e.g., US & UK/France/Japan start Friendly-allied; Russia & China Friendly; India–Pakistan & US–China Hostile/Tense; everyone else Neutral).
-3. **Military strength**: apply `02-military-capacity.md` formula in `EngineConfig` so the US/China/Russia start strong and Chad/Niger start weak (dampened via a log/power curve so it stays playable).
-4. **Structures**: place starting `City`/`Factory`/`Port`/`MissileSilo` from `04` + `03` at each nation's real hubs and foreign bases.
+**Shipped (on `feat/real-world-realism`), all gated behind `isRealisticWorld`:**
+- ✅ **Mode + relations + strength** — `publicGameModifiers.isRealisticWorld` wired end-to-end (`EngineConfig`, `MapPlaylist`, zod schema, client badge); nations seed realistic starting troops/gold (`02`) and starting relations (`01`).
+- ✅ **Starting capital city** — nations open with a capital at their map spawn (`placeNationCapital`).
+- ✅ **Terrain combat rules** — Realistic World mountains are a real barrier (slow/bloody to take, armies route around) per `05`.
+
+**Next (design in `09` / `10`, implement after):**
+- 🔲 **War-dynamics, P0: region/front-focused attacks** — let a player push a *specific* region harder (region-weighted conquest heap + per-region troop sub-budget; interior lines relocation, feints, encirclement later). See `09` §7.
+- 🔲 **Economy & diplomacy** — relation-tiered trade, sanctions/boycotts that strain alliances, reputation/betrayal, coalition action, right-of-passage/basing, strategic resources/chokepoints. See `10` §8.
+- 🔲 **Structures at real hubs** — place cities/factories/bases at `04`/`03` coordinates (capital is a first slice).
+- 🔲 **Terrain map regeneration** — regenerate `image.png` from a real DEM (SRTM/GLO-30) so ranges match reality and peaks become impassable walls (remote tooling task; Go-based generator).
 
 ## 4. Data vintage & verification caveat
 
