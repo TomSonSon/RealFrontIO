@@ -104,6 +104,10 @@ export class SendAttackIntentEvent implements GameEvent {
   constructor(
     public readonly targetID: PlayerID | null,
     public readonly troops: number,
+    // Optional focus: the tile under the cursor/click, concentrating the attack
+    // on that border region ("push a specific region harder"). Omit for a
+    // classic whole-border attack.
+    public readonly tile?: TileRef,
   ) {}
 }
 
@@ -794,6 +798,7 @@ export class Transport {
       type: "attack",
       targetID: event.targetID,
       troops: event.troops,
+      ...(event.tile !== undefined ? { tile: event.tile } : {}),
     });
   }
 
