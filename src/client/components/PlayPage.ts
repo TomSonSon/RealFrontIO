@@ -1,6 +1,7 @@
 import { assetUrl } from "@openfront/shared/AssetUrls";
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
+import { SOLO_ONLY } from "../SoloOnly";
 import "./CosmeticBackground";
 import "./NavAccountMenu";
 import "./NavUtilityIcons";
@@ -20,12 +21,14 @@ export class PlayPage extends LitElement {
         id="page-play"
         class="flex flex-col gap-2 w-full px-0 lg:px-4 min-h-0"
       >
-        <token-login class="absolute"></token-login>
-        <rewards-modal class="absolute"></rewards-modal>
+        ${SOLO_ONLY
+          ? nothing
+          : html`<token-login class="absolute"></token-login>
+              <rewards-modal class="absolute"></rewards-modal>`}
 
         <!-- Mobile: Fixed top bar -->
         <div
-          class="lg:hidden fixed left-0 right-0 top-[var(--top-ad-height,0px)] z-40 pt-[env(safe-area-inset-top)] bg-surface border-b border-white/10"
+          class="lg:hidden fixed left-0 right-0 top-0 z-40 pt-[env(safe-area-inset-top)] bg-surface border-b border-white/10"
         >
           <div
             class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center h-14 px-2 gap-2"
@@ -90,7 +93,7 @@ export class PlayPage extends LitElement {
 
           <!-- Left column: news banner + identity row, stacked tight. -->
           <div class="flex flex-col gap-2 min-w-0">
-            <news-box></news-box>
+            ${SOLO_ONLY ? nothing : html`<news-box></news-box>`}
 
             <!-- Identity row: username over the currently selected cosmetic background. -->
             <div
@@ -112,18 +115,22 @@ export class PlayPage extends LitElement {
 
           <!-- Right column: Streaming Now (desktop only), stretched to the left column's
                full height so the top strip has no dead space. -->
-          <streaming-now
-            class="hidden lg:flex lg:h-full lg:flex-col w-full min-w-0"
-          ></streaming-now>
+          ${SOLO_ONLY
+            ? nothing
+            : html`<streaming-now
+                class="hidden lg:flex lg:h-full lg:flex-col w-full min-w-0"
+              ></streaming-now>`}
         </div>
 
         <game-mode-selector></game-mode-selector>
 
         <!-- Desktop gets the compact footer button instead. -->
-        <steam-wishlist
-          campaign="home_mobile"
-          class="block px-2 pb-4 lg:hidden"
-        ></steam-wishlist>
+        ${SOLO_ONLY
+          ? nothing
+          : html`<steam-wishlist
+              campaign="home_mobile"
+              class="block px-2 pb-4 lg:hidden"
+            ></steam-wishlist>`}
       </div>
     `;
   }

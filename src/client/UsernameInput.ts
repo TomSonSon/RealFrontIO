@@ -1,6 +1,6 @@
 import { UserMeResponse } from "@openfront/shared/ApiSchemas";
 import { sanitizeClanTag } from "@openfront/shared/SharedUtil";
-import { html, LitElement } from "lit";
+import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { translateText } from "../client/Utils";
 import { getUserMe, invalidateUserMe } from "./Api";
@@ -22,6 +22,7 @@ import {
   type ClaimGrace,
   type ResolvedPlayerName,
 } from "./PlayerName";
+import { SOLO_ONLY } from "./SoloOnly";
 import {
   parseSteamGrantStore,
   STEAM_GRANT_NOTICE_KEY,
@@ -801,7 +802,8 @@ export class UsernameInput extends LitElement {
       <!-- The name field takes whatever the tag picker and trailing button
            leave, so the row always fills the strip. -->
       <div class="flex items-center w-full h-full gap-1.5 sm:gap-2">
-        ${this.renderClanControl()} ${this.renderNameControl()}
+        ${SOLO_ONLY ? nothing : this.renderClanControl()}
+        ${this.renderNameControl()}
       </div>
       <!-- One positioned slot, stacked. An error and the reservation reminder
            are not alternatives: the error is transient and self-inflicted
@@ -1022,11 +1024,13 @@ export class UsernameInput extends LitElement {
       <!-- The buttons differ in width, so this resizes the name field — which
            is transparent and left-aligned, so only its invisible right edge
            moves. -->
-      <div class="no-crazygames shrink-0 h-full max-h-[44px]">
-        ${this.verifiedActive
-          ? this.renderUseCustomButton()
-          : this.renderUseVerifiedButton()}
-      </div>
+      ${SOLO_ONLY
+        ? nothing
+        : html`<div class="no-crazygames shrink-0 h-full max-h-[44px]">
+            ${this.verifiedActive
+              ? this.renderUseCustomButton()
+              : this.renderUseVerifiedButton()}
+          </div>`}
     `;
   }
 

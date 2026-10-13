@@ -1,3 +1,4 @@
+import { SOLO_ONLY } from "./SoloOnly";
 import { whenPageIdle } from "./WhenPageIdle";
 
 /**
@@ -52,9 +53,20 @@ export function whenModalLoaded(tag: string, open: () => void): void {
   );
 }
 
+// The modals the solo-only build opens; the rest load only when asked for.
+const SOLO_MODALS = new Set([
+  "help-modal",
+  "single-player-modal",
+  "troubleshooting-modal",
+  "user-setting",
+]);
+
 export function prefetchModals(): void {
   // A failed prefetch is left to the open that needs the chunk.
   whenPageIdle(() => {
-    for (const load of Object.values(modules)) void load().catch(() => {});
+    for (const [tag, load] of Object.entries(modules)) {
+      if (SOLO_ONLY && !SOLO_MODALS.has(tag)) continue;
+      void load().catch(() => {});
+    }
   });
 }

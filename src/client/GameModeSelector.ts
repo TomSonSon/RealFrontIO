@@ -40,6 +40,7 @@ import {
   type BackendReachabilityDetail,
 } from "./ServerList";
 import type { SinglePlayerModal } from "./SinglePlayerModal";
+import { SOLO_ONLY } from "./SoloOnly";
 import { lastUserMeResponse } from "./UserMeBroadcast";
 import { UsernameInput } from "./UsernameInput";
 import {
@@ -556,6 +557,7 @@ export class GameModeSelector extends LitElement {
   }
 
   private openLobbyFeed(refreshList = false) {
+    if (SOLO_ONLY) return;
     this.feedWanted = true;
     this.feedGaveUp = false;
     if (lobbyFeedSuspended(this.desktopSessionState)) {
@@ -648,6 +650,7 @@ export class GameModeSelector extends LitElement {
   }
 
   render() {
+    if (SOLO_ONLY) return this.renderSoloHome();
     const ffa = this.lobbies?.games?.["ffa"]?.[0];
     const teams = this.lobbies?.games?.["team"]?.[0];
     const special = this.lobbies?.games?.["special"]?.[0];
@@ -845,6 +848,67 @@ export class GameModeSelector extends LitElement {
       )?.open(),
     );
   };
+
+  private openSoloSetup(args: Record<string, unknown>) {
+    if (!this.validateUsername()) return;
+    whenModalLoaded("single-player-modal", () =>
+      (
+        document.querySelector("single-player-modal") as SinglePlayerModal
+      )?.open(args),
+    );
+  }
+
+  private openRealisticWorld = () =>
+    this.openSoloSetup({ realisticWorld: true });
+
+  private openSoloClassic = () => this.openSoloSetup({ realisticWorld: false });
+
+  // The solo-only home: Realistic World first, the classic solo and the
+  // tutorial below it. No lobbies, no server list.
+  private renderSoloHome() {
+    return html`
+      <div class="flex flex-col gap-4 w-full px-4 pb-4 mx-auto sm:px-0 sm:pb-0">
+        <ios-add-to-home-screen-banner
+          class="no-crazygames [&:empty]:hidden"
+        ></ios-add-to-home-screen-banner>
+
+        <button
+          @click=${this.openRealisticWorld}
+          ?disabled=${!this.inputValid}
+          class="flex flex-col items-center justify-center gap-1 w-full h-32 sm:h-44 rounded-lg ${PRIMARY_ACTION} transition-all duration-200 text-white text-center ${!this
+            .inputValid
+            ? DISABLED
+            : ""}"
+        >
+          <span class="text-xl sm:text-2xl font-bold uppercase tracking-wider"
+            >${translateText("solo_home.realistic_world")}</span
+          >
+          <span class="text-sm sm:text-base text-white/80"
+            >${translateText("solo_home.realistic_world_desc")}</span
+          >
+        </button>
+
+        <div class="flex gap-4 h-14">
+          <div class="flex-1 h-full">
+            ${this.renderSmallActionCard(
+              translateText("solo_home.solo_classic"),
+              this.openSoloClassic,
+              SECONDARY_ACTION,
+            )}
+          </div>
+          ${getGamesPlayed() < TUTORIAL_CARD_MAX_GAMES
+            ? html`<div class="flex-1 h-full">
+                ${this.renderSmallActionCard(
+                  translateText("main.tutorial"),
+                  this.startTutorial,
+                  TUTORIAL_ACTION,
+                )}
+              </div>`
+            : nothing}
+        </div>
+      </div>
+    `;
+  }
 
   // Handled in Main, which also serves the help page's tutorial button.
   private startTutorial = () => {

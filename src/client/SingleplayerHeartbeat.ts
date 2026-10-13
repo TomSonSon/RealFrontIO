@@ -1,6 +1,7 @@
 import { GameID } from "@openfront/engine-api/Schemas";
 import { ClientEnv } from "./ClientEnv";
 import { clientPlatform } from "./ClientPlatform";
+import { SOLO_ONLY } from "./SoloOnly";
 
 // The server counts a game while its last beat is younger than three
 // intervals (SingleplayerPresence on the worker), so a missed beat or a
@@ -22,6 +23,7 @@ export const SINGLEPLAYER_HEARTBEAT_INTERVAL_MS = 60_000;
  * Returns a function that stops the heartbeat.
  */
 export function startSingleplayerHeartbeat(gameID: GameID): () => void {
+  if (SOLO_ONLY) return () => {};
   const beat = () => {
     try {
       const url = `${ClientEnv.gameHttpBase(gameID)}/${ClientEnv.gameWorkerPath(gameID)}/api/singleplayer/${gameID}/heartbeat`;

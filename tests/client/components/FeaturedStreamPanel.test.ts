@@ -90,7 +90,6 @@ describe("featured-stream panel", () => {
     // feed arrives, or leave polling stopped.
     streamsFeed.reset();
     delete (window as unknown as { Twitch?: unknown }).Twitch;
-    delete (window as unknown as { adsEnabled?: boolean }).adsEnabled;
     vi.useRealTimers();
     vi.clearAllMocks();
   });
@@ -212,18 +211,17 @@ describe("featured-stream panel", () => {
       btn!.click();
     };
 
-    // The panel is up and playing before /user/me has said anything, which is the real
-    // load order: the streams feed and the profile are independent requests.
-    const openUnresolved = async () => {
-      delete (window as unknown as { adsEnabled?: boolean }).adsEnabled;
-      const el = await mount(stream("openfrontmasters"));
-      FakePlayer.last!.fire(FakePlayer.READY);
-      await el.updateComplete;
-      return el;
-    };
+    // Stands in for /user/me resolving. The panel reads the last broadcast, so every
+    // test that depends on the entitlement sends one first.
+    const sendUserMe = (adFree: boolean) =>
+      document.dispatchEvent(
+        new CustomEvent("userMeResponse", {
+          detail: adFree ? { player: { adfree: true } } : false,
+        }),
+      );
 
     const open = async (adFree: boolean) => {
-      (window as unknown as { adsEnabled?: boolean }).adsEnabled = !adFree;
+      sendUserMe(adFree);
       const el = await mount(stream("openfrontmasters"));
       FakePlayer.last!.fire(FakePlayer.READY);
       await el.updateComplete;
@@ -244,12 +242,14 @@ describe("featured-stream panel", () => {
     // be on screen, and nothing re-rendered the header when it landed, so an ad-free user
     // whose profile resolved late never got the button for the rest of the visit.
     it("adds hide-for-today when the entitlement resolves after the panel is up", async () => {
-      const el = await openUnresolved();
+      sendUserMe(false);
+      const el = await mount(stream("openfrontmasters"));
+      FakePlayer.last!.fire(FakePlayer.READY);
+      await el.updateComplete;
       expect(
         el.querySelector('[aria-label="featured_stream.hide_today"]'),
       ).toBeNull();
-      (window as unknown as { adsEnabled?: boolean }).adsEnabled = false;
-      document.dispatchEvent(new CustomEvent("userMeResponse", { detail: {} }));
+      sendUserMe(true);
       await el.updateComplete;
       expect(
         el.querySelector('[aria-label="featured_stream.hide_today"]'),

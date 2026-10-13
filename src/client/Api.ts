@@ -64,6 +64,7 @@ import {
 } from "./Auth";
 import { ClientEnv } from "./ClientEnv";
 import { ensureServerList } from "./ServerList";
+import { SOLO_ONLY } from "./SoloOnly";
 import { UserSettings } from "./UserSettings";
 
 export async function fetchPlayerById(
@@ -280,6 +281,7 @@ async function requestUserMe(): Promise<{
 }
 
 export async function getUserMe(): Promise<UserMeResponse | false> {
+  if (SOLO_ONLY) return false;
   if (__userMe !== null) {
     return __userMe;
   }

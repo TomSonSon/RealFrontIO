@@ -18,8 +18,6 @@ import { GameEnv } from "@openfront/shared/configuration/Env";
 import { ClientEnv } from "src/client/ClientEnv";
 import { renderNavVersion } from "src/client/GameVersion";
 import { responseHasLinkedIdentity } from "./AccountIdentity";
-import { adGatekeeper } from "./AdGatekeeper";
-import { loadAdmiral, onAdmiralMeasured } from "./Admiral";
 import { getUserMe, invalidateUserMe } from "./Api";
 import {
   getDesktopSessionState,
@@ -69,7 +67,6 @@ import {
 } from "./GameModeSelector";
 import { GameStartingModal } from "./GameStartingModal";
 import type { HelpModal } from "./HelpModal";
-import "./HomepagePromos";
 import type { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
 import { showInGameAlert, showInGameConfirm } from "./InGameModal";
 import type { JoinLobbyModal } from "./JoinLobbyModal";
@@ -106,6 +103,7 @@ import {
   startServerListPolling,
 } from "./ServerList";
 import type { SinglePlayerModal } from "./SinglePlayerModal";
+import { SOLO_ONLY } from "./SoloOnly";
 import {
   parseSteamGrantStore,
   recordSteamGrant,
@@ -178,46 +176,7 @@ import "./styles/layout/header.css";
 declare global {
   interface Window {
     turnstile?: TurnstileApi;
-    adsEnabled: boolean;
     gtag?: (...args: any[]) => void;
-    PageOS: {
-      session: {
-        newPageView: () => void;
-      };
-    };
-    ramp: {
-      que: Array<() => void>;
-      passiveMode: boolean;
-      spaAddAds: (ads: Array<{ type: string; selectorId?: string }>) => void;
-      destroyUnits: (adType: string | string[]) => Promise<void>;
-      settings?: {
-        slots?: any;
-      };
-      spaNewPage: (url?: string) => void;
-      spaAds: (config?: {
-        ads?: Array<{ type: string; selectorId?: string }>;
-        countPageview?: boolean;
-        path?: string;
-      }) => void;
-      // Video ad methods
-      onPlayerReady: (() => void) | null;
-      addUnits: (units: Array<{ type: string }>) => Promise<void>;
-      displayUnits: () => void;
-    };
-    Bolt: {
-      on: (unitType: string, event: string, callback: () => void) => void;
-      BOLT_AD_REQUEST_START: string;
-      BOLT_AD_IMPRESSION: string;
-      BOLT_AD_STARTED: string;
-      BOLT_FIRST_QUARTILE: string;
-      BOLT_MIDPOINT: string;
-      BOLT_THIRD_QUARTILE: string;
-      BOLT_AD_COMPLETE: string;
-      BOLT_AD_ERROR: string;
-      BOLT_AD_PAUSED: string;
-      BOLT_AD_CLICKED: string;
-      SHOW_HIDDEN_CONTAINER: string;
-    };
     currentPageId?: string;
     showPage?: (pageId: string) => void;
   }
@@ -450,37 +409,57 @@ class Client {
     // Register modals with the URL router. Lobby modals (join/host) and
     // matchmaking are intentionally omitted — they own their own URL state
     // (path-based) or none at all.
-    modalRouter.register("store", {
-      tag: "store-modal",
-      pageId: "page-item-store",
-    });
+    // Online routes are not registered in the solo-only build, so their
+    // hashes fall through to the normal handling instead of opening a page.
+    if (!SOLO_ONLY) {
+      modalRouter.register("store", {
+        tag: "store-modal",
+        pageId: "page-item-store",
+      });
+      modalRouter.register("leaderboard", {
+        tag: "leaderboard-modal",
+        pageId: "page-leaderboard",
+      });
+      modalRouter.register("clan", { tag: "clan-modal", pageId: "page-clan" });
+      modalRouter.register("account", {
+        tag: "account-modal",
+        pageId: "page-account",
+      });
+      // Profile-menu modals: popup style, so no pageId.
+      modalRouter.register("account-settings", {
+        tag: "account-settings-modal",
+      });
+      modalRouter.register("change-username", {
+        tag: "change-username-modal",
+      });
+      modalRouter.register("subscription", { tag: "subscription-modal" });
+      modalRouter.register("stats", {
+        tag: "game-stats-modal",
+        pageId: "page-stats",
+      });
+      modalRouter.register("profile", {
+        tag: "player-profile-modal",
+        pageId: "page-profile",
+      });
+      modalRouter.register("news", { tag: "news-modal", pageId: "page-news" });
+      modalRouter.register("ranked", {
+        tag: "ranked-modal",
+        pageId: "page-ranked",
+      });
+      modalRouter.register("detailed-view", {
+        tag: "detailed-view-modal",
+        pageId: "page-detailed-view",
+      });
+      modalRouter.register("inventory", {
+        tag: "inventory-modal",
+        pageId: "page-inventory",
+      });
+    }
     modalRouter.register("settings", {
       tag: "user-setting",
       pageId: "page-settings",
     });
-    modalRouter.register("leaderboard", {
-      tag: "leaderboard-modal",
-      pageId: "page-leaderboard",
-    });
-    modalRouter.register("clan", { tag: "clan-modal", pageId: "page-clan" });
-    modalRouter.register("account", {
-      tag: "account-modal",
-      pageId: "page-account",
-    });
-    // Profile-menu modals: popup style, so no pageId.
-    modalRouter.register("account-settings", { tag: "account-settings-modal" });
-    modalRouter.register("change-username", { tag: "change-username-modal" });
-    modalRouter.register("subscription", { tag: "subscription-modal" });
-    modalRouter.register("stats", {
-      tag: "game-stats-modal",
-      pageId: "page-stats",
-    });
-    modalRouter.register("profile", {
-      tag: "player-profile-modal",
-      pageId: "page-profile",
-    });
     modalRouter.register("help", { tag: "help-modal", pageId: "page-help" });
-    modalRouter.register("news", { tag: "news-modal", pageId: "page-news" });
     modalRouter.register("language", {
       tag: "language-modal",
       pageId: "page-language",
@@ -489,21 +468,9 @@ class Client {
       tag: "single-player-modal",
       pageId: "page-single-player",
     });
-    modalRouter.register("ranked", {
-      tag: "ranked-modal",
-      pageId: "page-ranked",
-    });
-    modalRouter.register("detailed-view", {
-      tag: "detailed-view-modal",
-      pageId: "page-detailed-view",
-    });
     modalRouter.register("troubleshooting", {
       tag: "troubleshooting-modal",
       pageId: "page-troubleshooting",
-    });
-    modalRouter.register("inventory", {
-      tag: "inventory-modal",
-      pageId: "page-inventory",
     });
 
     // Kick the server-list fetch off here, before anything below awaits the
@@ -511,7 +478,7 @@ class Client {
     // can click Join or Create the list is already known and the click
     // never waits on a fetch (docs/MultiServer.md, "Server list v2"). It
     // never throws and keeps itself alive with a heartbeat afterwards.
-    startServerListPolling();
+    if (!SOLO_ONLY) startServerListPolling();
 
     // Prefetch turnstile token so it is available when the user joins a lobby.
     // Desktop (Steam) has no Turnstile script and is server-side exempt, so
@@ -521,7 +488,9 @@ class Client {
     // so rendering the widget there just fails — and replays never
     // send a token anyway (see getTurnstileToken below).
     const turnstilePrefetch =
-      isDesktopShell() || isReplayShellHost(window.location.hostname)
+      SOLO_ONLY ||
+      isDesktopShell() ||
+      isReplayShellHost(window.location.hostname)
         ? null
         : getTurnstileToken();
     // A prefetch that fails is not an error anyone has asked about yet: the
@@ -701,7 +670,7 @@ class Client {
     this.tokenLoginModal = document.querySelector(
       "token-login",
     ) as TokenLoginModal;
-    if (!this.tokenLoginModal) {
+    if (!SOLO_ONLY && !this.tokenLoginModal) {
       console.warn("Token login modal element not found");
     }
 
@@ -713,7 +682,7 @@ class Client {
     }
 
     this.rewardsModal = document.querySelector("rewards-modal") as RewardsModal;
-    if (!this.rewardsModal) {
+    if (!SOLO_ONLY && !this.rewardsModal) {
       console.warn("Rewards modal element not found");
     }
 
@@ -731,26 +700,6 @@ class Client {
         void updateCrazyGamesNavButton();
       } else {
         updateAccountNavButton(userMeResponse);
-      }
-      const isAdFree =
-        userMeResponse !== false && userMeResponse.player?.adfree === true;
-      window.adsEnabled =
-        !isAdFree && !crazyGamesSDK.isOnCrazyGames() && !isDesktopShell();
-      // Ad-eligible users only: paid/adfree users must never load Admiral (its
-      // adblock popup fires autonomously once the payload runs). Start watching
-      // adblock state; once a blocker is ever detected the in-game ad is
-      // suppressed forever (persisted) — those users are highly ad-sensitive.
-      if (window.adsEnabled) {
-        loadAdmiral();
-        // Admiral's read is more reliable than our DOM bait, so use it as a
-        // fast initial signal. A blocker that whitelists this site still shows
-        // ads, so "blocked" means adblocking AND not whitelisted.
-        onAdmiralMeasured((res) => {
-          adGatekeeper.seed(
-            res.adblocking === true && res.whitelisted !== true,
-          );
-        });
-        adGatekeeper.start();
       }
       // Before the dispatch: <username-input> reads this store when it picks
       // the lapse notice's wording, and the record has to be current by then.
@@ -933,7 +882,7 @@ class Client {
     // A session dropped in the background — an expired refresh token, a 401 on
     // any endpoint — clears itself deep inside Auth, where none of the above
     // is reachable. Routing it through onUserMe means the nav button, its
-    // cached profile and window.adsEnabled all follow, rather than only the
+    // cached profile all follow, rather than only the
     // components listening for userMeResponse.
     document.addEventListener("session-cleared", () => {
       authGeneration++;
@@ -943,17 +892,19 @@ class Client {
 
     // Register before initial auth settles: the status bar may already offer
     // Retry while startup is still waiting for its first session.
-    subscribeDesktopSessionRecovery(async () => {
-      invalidateUserMe();
-      snapshotLapseMarker();
-      const generation = ++authGeneration;
-      const result = await retrySteamSignIn();
-      applyUserMe(generation)(result === false ? false : await getUserMe());
-    });
+    if (!SOLO_ONLY)
+      subscribeDesktopSessionRecovery(async () => {
+        invalidateUserMe();
+        snapshotLapseMarker();
+        const generation = ++authGeneration;
+        const result = await retrySteamSignIn();
+        applyUserMe(generation)(result === false ? false : await getUserMe());
+      });
 
     const initialAuthGeneration = authGeneration;
-    if ((await userAuth()) === false) {
-      // Not logged in: apply the signed-out profile directly.
+    if (SOLO_ONLY || (await userAuth()) === false) {
+      // Not logged in (solo-only builds have no account): apply the
+      // signed-out profile directly.
       applyUserMe(initialAuthGeneration)(false);
     } else {
       // JWT appears valid: fetch the profile and apply it if still current.
@@ -962,16 +913,17 @@ class Client {
 
     // Re-run auth when the player signs into CrazyGames mid-session. Logout
     // reloads the page, so only login needs handling here.
-    crazyGamesSDK.addAuthListener(() => {
-      invalidateUserMe();
-      snapshotLapseMarker();
-      const generation = authGeneration;
-      reauthAfterCrazyGamesChange().then((result) =>
-        result === false
-          ? applyUserMe(generation)(false)
-          : getUserMe().then(applyUserMe(generation)),
-      );
-    });
+    if (!SOLO_ONLY)
+      crazyGamesSDK.addAuthListener(() => {
+        invalidateUserMe();
+        snapshotLapseMarker();
+        const generation = authGeneration;
+        reauthAfterCrazyGamesChange().then((result) =>
+          result === false
+            ? applyUserMe(generation)(false)
+            : getUserMe().then(applyUserMe(generation)),
+        );
+      });
 
     // Subscribe to the bridge directly rather than to the status bar's
     // re-broadcast. The bar subscribes when its element upgrades and the
@@ -1211,7 +1163,7 @@ class Client {
 
   private async handleUrl() {
     // Check if CrazyGames SDK is enabled first (no hash needed in CrazyGames)
-    if (crazyGamesSDK.isOnCrazyGames()) {
+    if (!SOLO_ONLY && crazyGamesSDK.isOnCrazyGames()) {
       const lobbyId = await crazyGamesSDK.getInviteGameId();
       console.log("got game id", lobbyId);
       if (lobbyId && GAME_ID_REGEX.test(lobbyId)) {
@@ -1227,14 +1179,16 @@ class Client {
         return;
       }
     }
-    crazyGamesSDK.isInstantMultiplayer().then((isInstant) => {
-      if (isInstant) {
-        console.log(
-          `CrazyGames: joining instant multiplayer lobby from CrazyGames`,
-        );
-        whenModalLoaded("host-lobby-modal", () => this.hostModal.open());
-      }
-    });
+    if (!SOLO_ONLY) {
+      crazyGamesSDK.isInstantMultiplayer().then((isInstant) => {
+        if (isInstant) {
+          console.log(
+            `CrazyGames: joining instant multiplayer lobby from CrazyGames`,
+          );
+          whenModalLoaded("host-lobby-modal", () => this.hostModal.open());
+        }
+      });
+    }
 
     const strip = () =>
       history.replaceState(
@@ -1267,7 +1221,7 @@ class Client {
     // run ahead of userAuth()/getUserMe() rather than here.
 
     // Handle different hash sections
-    if (decodedHash.startsWith("#purchase-completed")) {
+    if (!SOLO_ONLY && decodedHash.startsWith("#purchase-completed")) {
       handlePurchaseReturn(params, {
         strip,
         alertAndStrip,
@@ -1282,7 +1236,7 @@ class Client {
       return;
     }
 
-    if (decodedHash.startsWith("#token-login")) {
+    if (!SOLO_ONLY && decodedHash.startsWith("#token-login")) {
       const token = params.get("token-login");
 
       if (!token) {
@@ -1301,7 +1255,7 @@ class Client {
     // here (see SteamLink.ts for the full handoff). Checked against the raw
     // hash, not decodedHash — parseSteamLinkToken's prefix match is exact
     // and the token itself is opaque, so no decoding is needed or expected.
-    const steamLinkToken = parseSteamLinkToken(hash);
+    const steamLinkToken = SOLO_ONLY ? null : parseSteamLinkToken(hash);
     if (steamLinkToken) {
       // Only the token form: the desktop gate opened it in this browser, so
       // the Steam build is on this machine. A typed code can come from a phone.
@@ -1317,7 +1271,7 @@ class Client {
     // the website. There's no token in that case, so parseSteamLinkToken
     // above returns null — this is the bare `#steam-link` hash the code path
     // lands on instead (see SteamLink.ts's isSteamLinkHash).
-    if (isSteamLinkHash(hash)) {
+    if (!SOLO_ONLY && isSteamLinkHash(hash)) {
       strip();
       void this.steamLink.openForCodeEntry();
       return;
@@ -1326,7 +1280,7 @@ class Client {
     // On a versioned replay shell the pathname IS the game id: the worker
     // serves the record's matching build at replay.<domain>/<gameId> (see
     // VersionedReplay.ts).
-    if (isReplayShellHost(window.location.hostname)) {
+    if (!SOLO_ONLY && isReplayShellHost(window.location.hostname)) {
       const replayGameId = window.location.pathname.slice(1);
       if (GAME_ID_REGEX.test(replayGameId)) {
         whenModalLoaded("join-lobby-modal", () => {
@@ -1344,7 +1298,9 @@ class Client {
       /^(?:\/v\/[^/]+)?\/(?:w\d+\/)?game\/([^/]+)/,
     );
     const lobbyId =
-      pathMatch && GAME_ID_REGEX.test(pathMatch[1]) ? pathMatch[1] : null;
+      !SOLO_ONLY && pathMatch && GAME_ID_REGEX.test(pathMatch[1])
+        ? pathMatch[1]
+        : null;
     if (lobbyId) {
       const handoff =
         this.steamHandoffDeclinedFor === lobbyId
@@ -1768,7 +1724,6 @@ class Client {
         "change-username-modal",
         "subscription-modal",
         "lang-selector",
-        "homepage-promos",
       ].forEach((tag) => {
         const modal = document.querySelector(tag) as HTMLElement & {
           close?: () => void;
@@ -1801,9 +1756,6 @@ class Client {
 
       hideMenuChrome();
 
-      if (window.PageOS?.session?.newPageView) {
-        window.PageOS.session.newPageView();
-      }
       crazyGamesSDK.loadingStop();
       crazyGamesSDK.gameplayStart();
       setInGameSignal(true);
@@ -1892,11 +1844,9 @@ class Client {
       // that reload -- not handleLeaveLobby -- which restores the started-game
       // teardown. Two pieces of it have no in-place restore path:
       // gameModeSelector.stop() (line ~1139/1157) kills the public lobby
-      // socket, whose start() is only ever called from connectedCallback();
-      // and the same block hides every .ad element, which nothing ever
-      // un-hides. Leaving in place therefore stranded the player on a
-      // homepage with a frozen lobby list and no ad rails whenever the join
-      // did not complete -- modal closed, or lobby full/already started.
+      // socket, whose start() is only ever called from connectedCallback().
+      // Leaving in place therefore stranded the player on a homepage with a
+      // frozen lobby list whenever the join did not complete -- modal closed, or lobby full/already started.
       //
       // Navigating to the lobby's own /game/<id> URL rather than "/" means
       // the invite survives the reload without needing to be stashed: the
@@ -2152,6 +2102,7 @@ const bootstrap = () => {
   // of the map. See issue #5098.
   installCtrlWheelZoomBlocker();
 
+  if (SOLO_ONLY) document.body.classList.add("solo-only");
   initLayout();
   new Client().initialize();
   initNavigation();

@@ -43,7 +43,6 @@ describe("hashDirectory", () => {
     await fs.writeFile(path.join(dir, "assets", "index-abc.js"), "hello");
     for (const name of [
       "LICENSE",
-      "ads.txt",
       "privacy-policy.html",
       "robots.txt",
       "terms-of-service.html",

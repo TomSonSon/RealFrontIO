@@ -399,6 +399,11 @@ export default defineConfig(({ mode }) => {
         isProduction ? "" : "localhost:3000",
       ),
       "process.env.GAME_ENV": JSON.stringify(isProduction ? "prod" : "dev"),
+      // Solo-only is on unless SOLO_ONLY=false. Off under vitest so the
+      // online UI stays covered; solo tests mock SoloOnly.ts instead.
+      "process.env.SOLO_ONLY": JSON.stringify(
+        mode !== "test" && env.SOLO_ONLY !== "false" ? "true" : "false",
+      ),
       // Force empty under vitest (mode "test") so the getApiBase localhost-
       // fallback test is deterministic regardless of any API_DOMAIN in the
       // host shell / CI environment.

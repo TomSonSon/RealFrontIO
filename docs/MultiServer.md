@@ -1012,7 +1012,7 @@ behind a load balancer, else `<subdomain>.<domain>`; the version is the
 | `sites/<site>/v/<short>/root-files.json`      | the build (`writeRootFilesIndex`)              |
 | `sites/<site>/v/<short>/root/<path>`          | copied from `static/`, one per index entry     |
 
-Everything in `resources/public/` (the policy pages, `robots.txt`, `ads.txt`,
+Everything in `resources/public/` (the policy pages, `robots.txt`,
 `press/`, and Apple Pay's `.well-known/` file) is served verbatim at the site
 root. The site Worker has no origin behind it, so it serves these from R2:
 `root-files.json` maps each path to its content type (plus a `"<dir>/"` entry
