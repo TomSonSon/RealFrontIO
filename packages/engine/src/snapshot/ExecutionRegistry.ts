@@ -31,6 +31,8 @@ import { PauseExecutionSnapshot } from "../execution/PauseExecution";
 import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
+import { RealBordersInitExecutionSnapshot } from "../execution/RealBordersInitExecution";
+import { RealBordersStartExecutionSnapshot } from "../execution/RealBordersStartExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
 import { SAMLauncherExecutionSnapshot } from "../execution/SAMLauncherExecution";
@@ -87,6 +89,8 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   PortExecutionSnapshot,
   PurchaseTechExecutionSnapshot,
   QuickChatExecutionSnapshot,
+  RealBordersInitExecutionSnapshot,
+  RealBordersStartExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,
   SAMLauncherExecutionSnapshot,

@@ -12,8 +12,8 @@ import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
 import {
-  PlayerInfoSchema,
   playerInfoData,
+  PlayerInfoSchema,
   readPlayerInfo,
 } from "../snapshot/CommonSchemas";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
@@ -23,6 +23,7 @@ import type {
   SnapshotWriter,
 } from "../snapshot/SnapshotContext";
 import { PlayerExecution } from "./PlayerExecution";
+import { claimableCountryAt, claimCountry } from "./RealBordersClaim";
 import { TribeExecution } from "./TribeExecution";
 import { getSpawnTiles } from "./Util";
 
@@ -86,6 +87,16 @@ export class SpawnExecution implements Execution {
       return;
     }
 
+    // Real borders: the tile picks a roster country to claim, rather than a spawn area.
+    if (this.mg.config().isRealBorders()) {
+      if (player.hasSpawned() || this.tile === undefined) return;
+      const country = claimableCountryAt(this.mg, this.tile);
+      if (country === null) return;
+      claimCountry(this.mg, player, country);
+      this.endSingleplayerSpawn();
+      return;
+    }
+
     // Security: If random spawn is enabled, prevent players from re-rolling their spawn location
     if (this.mg.config().isRandomSpawn() && player.hasSpawned()) {
       return;
@@ -117,6 +128,10 @@ export class SpawnExecution implements Execution {
     player.setSpawnTile(spawn.center);
     this.mg.stats().recordSpawnTile(player, spawn.center);
 
+    this.endSingleplayerSpawn();
+  }
+
+  private endSingleplayerSpawn(): void {
     if (
       this.mg.config().gameConfig().gameType === GameType.Singleplayer &&
       this.playerInfo.playerType === PlayerType.Human

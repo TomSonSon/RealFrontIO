@@ -72,7 +72,7 @@ import {
   chokepointController,
   hasChokepointMap,
 } from "../realism/ChokepointToll";
-import { realisticRelationScore } from "../realism/RealisticWorld";
+import { seedStartingRelations } from "../realism/RealisticWorld";
 import {
   allNodeIds,
   canPurchase,
@@ -139,6 +139,9 @@ export function createGame(
 }
 
 export type CellString = string;
+
+// Realistic World treaties never reach their expiry within a game.
+const TREATY_ALLIANCE_TICKS = 1_000_000_000;
 
 export class GameImpl implements Game {
   private _ticks = 0;
@@ -488,6 +491,21 @@ export class GameImpl implements Game {
     return ar;
   }
 
+  seedTreatyAlliance(a: Player, b: Player): void {
+    if (this._config.disableAlliances()) return;
+    if (!a.isAlive() || !b.isAlive() || a.isAlliedWith(b)) return;
+    const alliance = new AllianceImpl(
+      this,
+      a as PlayerImpl,
+      b as PlayerImpl,
+      this._ticks,
+      this.nextAllianceID++,
+      this._ticks + TREATY_ALLIANCE_TICKS,
+    );
+    (a as PlayerImpl)._alliances.push(alliance);
+    (b as PlayerImpl)._alliances.push(alliance);
+  }
+
   acceptAllianceRequest(request: AllianceRequestImpl) {
     this.allianceRequests = this.allianceRequests.filter(
       (ar) => ar !== request,
@@ -790,22 +808,16 @@ export class GameImpl implements Game {
    * Realistic World mode: seed nation-to-nation starting relations so early
    * diplomacy mirrors the real world (who is allied, who is hostile). No-op in
    * any other mode. Runs once after every player is added; seeded relations
-   * decay back toward neutral over time like any other relation.
+   * decay back toward neutral over time like any other relation. Real borders
+   * seeds later, once the human has claimed a country.
    */
   private seedRealisticRelations(): void {
-    if (!this._config.isRealisticWorld()) {
+    if (!this._config.isRealisticWorld() || this._config.isRealBorders()) {
       return;
     }
-    const players = [...this._players.values()];
-    for (const a of players) {
-      if (a.type() !== PlayerType.Nation) continue;
-      for (const b of players) {
-        if (b === a || b.type() !== PlayerType.Nation) continue;
-        const score = realisticRelationScore(a.name(), b.name());
-        if (score === undefined || score === 0) continue;
-        a.updateRelation(b, score);
-      }
-    }
+    seedStartingRelations(
+      [...this._players.values()].filter((p) => p.type() === PlayerType.Nation),
+    );
   }
 
   private maybeAssignTeam(player: PlayerInfo): Team | null {

@@ -55,7 +55,10 @@ import {
   within,
 } from "@openfront/engine-lib/Util";
 import { z } from "zod";
-import { realisticRelationScore } from "../realism/RealisticWorld";
+import {
+  isRealismCountry,
+  realisticStartingScore,
+} from "../realism/RealisticWorld";
 import {
   newPlayerInfo,
   playerInfoData,
@@ -209,6 +212,7 @@ export class PlayerImpl implements Player {
   public _alliances: MutableAlliance[] = [];
 
   private _spawnTile: TileRef | undefined;
+  private _realismKey: string | null = null;
   private _isDisconnected = false;
   private _disconnectSnapshot: DisconnectSnapshot | null = null;
 
@@ -388,6 +392,8 @@ export class PlayerImpl implements Player {
     // PlayerUpdate every tick rather than only appearing in the game-end record.
     const deathStats = this.mg.stats().getPlayerStats(this);
 
+    const realistic = this.mg.config().isRealisticWorld();
+
     return {
       type: GameUpdateType.Player,
       clientID: this.clientID(),
@@ -429,6 +435,11 @@ export class PlayerImpl implements Player {
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
       techRanks: this.techRanksForUpdate(),
+      reputation: realistic ? this.reputation() : undefined,
+      embargoSenders: realistic
+        ? this.mg.incomingEmbargoCount(this)
+        : undefined,
+      allianceBlocked: realistic ? this.isAllianceBlacklisted() : undefined,
     };
   }
 
@@ -768,6 +779,18 @@ export class PlayerImpl implements Player {
     return this._spawnTile;
   }
 
+  realismKey(): string {
+    return this._realismKey ?? this.name();
+  }
+
+  hasRealismKey(): boolean {
+    return this._realismKey !== null;
+  }
+
+  setRealismKey(key: string): void {
+    this._realismKey = key;
+  }
+
   incomingAllianceRequests(): AllianceRequest[] {
     return this.mg.allianceRequests.filter((ar) => ar.recipient() === this);
   }
@@ -1026,13 +1049,16 @@ export class PlayerImpl implements Player {
 
   decayRelations() {
     const realistic = this.mg.config().isRealisticWorld();
+    const withBlocs = this.mg.config().isRealBorders();
     this.relations.forEach((r: number, p: Player) => {
       // Realistic World: nation pairs settle at their real-world baseline.
       const baseline =
-        realistic &&
-        this.type() === PlayerType.Nation &&
-        p.type() === PlayerType.Nation
-          ? (realisticRelationScore(this.name(), p.name()) ?? 0)
+        realistic && isRealismCountry(this) && isRealismCountry(p)
+          ? (realisticStartingScore(
+              this.realismKey(),
+              p.realismKey(),
+              withBlocs,
+            ) ?? 0)
           : 0;
       const sign = -1 * Math.sign(r - baseline);
       const delta = RELATION_DECAY_STEP;
@@ -2093,6 +2119,7 @@ export class PlayerImpl implements Player {
       numUnitsConstructed: Object.entries(this.numUnitsConstructed).map(
         ([type, n]) => [type as UnitType, n],
       ),
+      realismKey: this._realismKey,
     };
   }
 
@@ -2166,13 +2193,14 @@ export class PlayerImpl implements Player {
         }
       : (box as null);
     this.numUnitsConstructed = Object.fromEntries(s.numUnitsConstructed);
+    this._realismKey = s.realismKey;
     this.nearbyMemo = null;
   }
 }
 
 export const PlayerSnapshot = snapshotType({
   name: "Player",
-  version: 1,
+  version: 2,
   schema: z.object({
     smallID: zInt(),
     info: PlayerInfoSchema,
@@ -2236,6 +2264,11 @@ export const PlayerSnapshot = snapshotType({
       .nullable()
       .optional(),
     numUnitsConstructed: z.array(z.tuple([UnitTypeSchema, zInt()])),
+    realismKey: z.string().nullable(),
   }),
+  migrations: {
+    // v1 had no realism key; players keep the default (their name).
+    1: (d) => ({ ...d, realismKey: null }),
+  },
 });
 export type PlayerState = z.infer<typeof PlayerSnapshot.schema>;

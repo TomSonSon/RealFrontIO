@@ -15,6 +15,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player } from "../../game/Game";
+import { canAiAttack } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -272,7 +273,8 @@ export class NationMIRVBehavior {
         p !== this.player &&
         p.isPlayer() &&
         p.type() !== PlayerType.Bot &&
-        !this.player!.isOnSameTeam(p)
+        !this.player!.isOnSameTeam(p) &&
+        canAiAttack(this.game, this.player!, p)
       );
     });
   }

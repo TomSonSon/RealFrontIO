@@ -350,6 +350,12 @@ export interface Player extends PlayerLike {
   setSpawnTile(spawnTile: TileRef): void;
   spawnTile(): TileRef | undefined;
 
+  // Realistic World: the country whose real-world data this player uses
+  // (relations, baselines). Defaults to the player's name.
+  realismKey(): string;
+  hasRealismKey(): boolean;
+  setRealismKey(key: string): void;
+
   // Territory
   tiles(): ReadonlyTileSet;
   borderTiles(): ReadonlyTileSet;
@@ -547,6 +553,12 @@ export interface Game extends GameLike {
 
   // Alliances
   expireAlliance(alliance: Alliance): void;
+  /**
+   * Realistic World: registers a starting treaty alliance between two players
+   * without a request. No-op when either is dead, they are already allied, or
+   * alliances are disabled.
+   */
+  seedTreatyAlliance(a: Player, b: Player): void;
   /**
    * section 8.6 coalition war declaration. `initiator` proposes a war on `target` to
    * `candidates`; each friendly candidate that votes yes joins (becomes

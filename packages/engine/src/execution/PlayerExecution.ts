@@ -18,6 +18,7 @@ import {
   tileTraversalScratch,
   TileTraversalScratch,
 } from "../game/TileTraversalScratch";
+import { isHomeCluster } from "../realism/RealBordersPolicy";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -180,6 +181,12 @@ export class PlayerExecution implements Execution {
     return (base * BigInt(coalitionSanctionPercent(senders))) / 100n;
   }
 
+  // Real borders: the country's own starting land is never removed or annexed
+  // for being surrounded (Lesotho, single-tile exclaves). Conquered pockets are.
+  private isProtectedHomeCluster(cluster: readonly TileRef[]): boolean {
+    return this.config.isRealBorders() && isHomeCluster(this.player, cluster);
+  }
+
   private removeClusters() {
     // Perf: We fuse bounds calculations into the initial DFS flood, returning packed Int32Array bounds
     // instead of scanning every TileRef and allocating hundreds of Object {min, max} Cells.
@@ -203,7 +210,11 @@ export class PlayerExecution implements Execution {
         boxes[3],
       );
       const severedLand = this.severedLand(clusters[0], boxes, 0, null, null);
-      if (surroundedBy && !surroundedBy.isFriendly(this.player)) {
+      if (
+        surroundedBy &&
+        !surroundedBy.isFriendly(this.player) &&
+        !this.isProtectedHomeCluster(clusters[0])
+      ) {
         this.removeCluster(clusters[0]);
       }
       if (severedLand !== null) {
@@ -355,7 +366,9 @@ export class PlayerExecution implements Execution {
     let severed: SeveredCandidates | null = null;
     let open: SeveredCandidates | null = null;
     for (let i = 0; i < clusters.length; i++) {
-      if (i === largestIndex) continue;
+      if (i === largestIndex || this.isProtectedHomeCluster(clusters[i])) {
+        continue;
+      }
       const cluster = clusters[i];
       const idx = i * 4;
       const result = this.classifyCluster(
@@ -396,7 +409,11 @@ export class PlayerExecution implements Execution {
       open,
     );
 
-    if (surroundedBy && !surroundedBy.isFriendly(this.player)) {
+    if (
+      surroundedBy &&
+      !surroundedBy.isFriendly(this.player) &&
+      !this.isProtectedHomeCluster(largestCluster)
+    ) {
       this.removeCluster(largestCluster);
     }
     for (let i = 0; i < clusters.length; i++) {
@@ -1114,10 +1131,6 @@ export class PlayerExecution implements Execution {
       maxY = -1e9;
     const map = this.map;
     const mySmallID = this.player.smallID();
-    // Realistic World: a cluster touching an ally is held through right of
-    // passage; getCapturingPlayer never lets an ally capture it, so it is not
-    // enclosed.
-    const skipFriendly = this.config.isRealisticWorld();
     for (let j = 0; j < cluster.length; j++) {
       const tr = cluster[j];
       if (map.isShore(tr) || map.isOnEdgeOfMap(tr)) {
@@ -1128,12 +1141,6 @@ export class PlayerExecution implements Execution {
         const n = this.nbuf[i];
         const ownerId = map.ownerID(n);
         if (ownerId !== 0 && ownerId !== mySmallID) {
-          if (
-            skipFriendly &&
-            (this.mg.playerBySmallID(ownerId) as Player).isFriendly(this.player)
-          ) {
-            return 0;
-          }
           hasEnemy = true;
           const x = map.x(n);
           const y = map.y(n);

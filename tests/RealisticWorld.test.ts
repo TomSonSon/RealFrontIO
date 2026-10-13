@@ -20,6 +20,7 @@ import {
   REALISTIC_SEEDS,
   realisticRelationScore,
   realisticSeedFor,
+  seedStartingRelations,
 } from "@openfront/engine/realism/RealisticWorld";
 import fs from "fs";
 import path from "path";
@@ -205,8 +206,10 @@ describe("Realistic World - nation starting relations", () => {
     ),
   ];
 
+  // Real borders (World, Normal, FFA) seeds from RealBordersStartExecution, which
+  // setup() does not run, so these tests seed the nations directly.
   async function realisticWorld(): Promise<Game> {
-    return setup(
+    const game = await setup(
       "big_plains",
       {
         gameMap: GameMapType.World,
@@ -218,6 +221,10 @@ describe("Realistic World - nation starting relations", () => {
       true,
       worldNations(),
     );
+    seedStartingRelations(
+      game.allPlayers().filter((p) => p.type() === PlayerType.Nation),
+    );
+    return game;
   }
 
   test("seeds allied nations friendly and adversaries hostile", async () => {
@@ -262,6 +269,9 @@ describe("Realistic World - nation starting relations", () => {
           new PlayerInfo("France", PlayerType.Nation, null, "fr_id"),
         ),
       ],
+    );
+    seedStartingRelations(
+      game.allPlayers().filter((p) => p.type() === PlayerType.Nation),
     );
     const mg = game.player("mg_id") as Player;
     const fr = game.player("fr_id") as Player;

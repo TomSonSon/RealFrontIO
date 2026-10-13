@@ -27,6 +27,8 @@ import { simpleHash } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "./configuration/EngineConfig";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
+import { RealBordersInitExecution } from "./execution/RealBordersInitExecution";
+import { RealBordersStartExecution } from "./execution/RealBordersStartExecution";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
@@ -178,16 +180,23 @@ export class GameRunner {
     if (this.game.config().gameConfig().gameType !== GameType.Singleplayer) {
       this.game.addExecution(new SpawnTimerExecution());
     }
-    if (this.game.config().spawnNations()) {
-      this.game.addExecution(...this.execManager.nationExecutions());
-    }
-    if (this.game.config().isRandomSpawn()) {
-      this.game.addExecution(...this.execManager.spawnPlayers());
-    }
-    if (this.game.config().bots() > 0) {
+    if (this.game.config().isRealBorders()) {
       this.game.addExecution(
-        ...this.execManager.spawnTribes(this.game.config().bots()),
+        new RealBordersInitExecution(),
+        new RealBordersStartExecution(this.execManager.gameID()),
       );
+    } else {
+      if (this.game.config().spawnNations()) {
+        this.game.addExecution(...this.execManager.nationExecutions());
+      }
+      if (this.game.config().isRandomSpawn()) {
+        this.game.addExecution(...this.execManager.spawnPlayers());
+      }
+      if (this.game.config().bots() > 0) {
+        this.game.addExecution(
+          ...this.execManager.spawnTribes(this.game.config().bots()),
+        );
+      }
     }
     this.game.addExecution(new WinCheckExecution());
     if (this.game.config().doomsdayClockConfig().enabled) {

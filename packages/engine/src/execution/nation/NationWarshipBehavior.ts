@@ -16,6 +16,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
+import { canAiAttack } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -431,7 +432,7 @@ export class NationWarshipBehavior {
     }
 
     const target = this.findWarshipInfestationCounterTarget(isTeamGame);
-    if (target !== null) {
+    if (target !== null && canAiAttack(this.game, this.player, target.player)) {
       this.buildCounterWarship(target);
     }
   }

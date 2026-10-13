@@ -107,15 +107,7 @@ function largeTerritoryBonus(numTiles: number, depth: number): number {
   );
 }
 
-/**
- * Coalition-sanction damage (Realistic World mode): how much a target's
- * passive income is reduced per concurrent embargo-wielding sender, capped so
- * a sanctioned economy keeps a floor. More senders (a coalition / isolation)
- * hurts more - coordinating pressure is stronger than a lone boycott.
- */
-export function coalitionSanctionPercent(senders: number): number {
-  return Math.max(50, 100 - 25 * senders);
-}
+export { coalitionSanctionPercent } from "@openfront/engine-api/resources/Sanctions";
 
 function terrainAttackBase(
   terrain: TerrainType,
@@ -236,7 +228,7 @@ export class EngineConfig extends Config {
   }
 
   bots(): number {
-    return this._gameConfig.bots;
+    return this.isRealBorders() ? 0 : this._gameConfig.bots;
   }
   disableNavMesh(): boolean {
     return this._gameConfig.disableNavMesh ?? false;

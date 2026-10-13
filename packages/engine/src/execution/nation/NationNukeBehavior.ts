@@ -22,6 +22,7 @@ import { assertNever, boundingBoxTiles } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
 import { UniversalPathFinding } from "../../pathfinding/PathFinder";
+import { canAiAttack } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -277,14 +278,17 @@ export class NationNukeBehavior {
       this.game.players().length === 2
     ) {
       const other = this.game.players().find((p) => p !== this.player);
-      if (other) {
+      if (other && canAiAttack(this.game, this.player, other)) {
         return other;
       }
     }
 
     // Retaliate against incoming attacks (Most important!)
     const incomingAttackPlayer = this.attackBehavior.findIncomingAttackPlayer();
-    if (incomingAttackPlayer) {
+    if (
+      incomingAttackPlayer &&
+      canAiAttack(this.game, this.player, incomingAttackPlayer)
+    ) {
       return incomingAttackPlayer;
     }
 
@@ -297,7 +301,10 @@ export class NationNukeBehavior {
       this.random.chance(2)
     ) {
       const denseTarget = this.findHighDensityTarget();
-      if (denseTarget !== null) {
+      if (
+        denseTarget !== null &&
+        canAiAttack(this.game, this.player, denseTarget)
+      ) {
         return denseTarget;
       }
     }
@@ -314,7 +321,12 @@ export class NationNukeBehavior {
           .sort((a, b) => b.numTilesOwned() - a.numTilesOwned());
         const crown = sortedByTiles[0];
 
-        if (crown && crown !== this.player && !this.player.isFriendly(crown)) {
+        if (
+          crown &&
+          crown !== this.player &&
+          !this.player.isFriendly(crown) &&
+          canAiAttack(this.game, this.player, crown)
+        ) {
           const crownShare = crown.numTilesOwned() / numTilesWithoutFallout;
           if (crownShare > CROWN_NEAR_WIN_SHARE) {
             return crown;
@@ -331,6 +343,7 @@ export class NationNukeBehavior {
       for (const target of ally.targets()) {
         if (target === this.player) continue;
         if (this.player.isFriendly(target)) continue;
+        if (!canAiAttack(this.game, this.player, target)) continue;
         // Found a valid ally target to nuke
         return target;
       }
@@ -343,6 +356,7 @@ export class NationNukeBehavior {
       if (relation.relation !== Relation.Hostile) continue;
       const other = relation.player;
       if (this.player.isFriendly(other)) continue;
+      if (!canAiAttack(this.game, this.player, other)) continue;
 
       const otherMaxTroops = this.game.config().maxTroops(other);
       if (myMaxTroops >= otherMaxTroops * 2) continue;
@@ -352,13 +366,13 @@ export class NationNukeBehavior {
 
     // In FFAs, nuke the crown if they're far enough ahead
     const crownTarget = this.findFFACrownTarget();
-    if (crownTarget) {
+    if (crownTarget && canAiAttack(this.game, this.player, crownTarget)) {
       return crownTarget;
     }
 
     // In Teams, nuke the strongest team
     const teamTarget = this.findStrongestTeamTarget();
-    if (teamTarget) {
+    if (teamTarget && canAiAttack(this.game, this.player, teamTarget)) {
       return teamTarget;
     }
 

@@ -32,6 +32,7 @@ import {
   targetTransportTile,
 } from "../../game/TransportShipUtils";
 import { PathFinding } from "../../pathfinding/PathFinder";
+import { canAiAttack } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -161,6 +162,7 @@ export class AiAttackBehavior {
       if (landing === null || this.followedLandings.includes(attack)) continue;
       this.followedLandings.push(attack);
       const target = attack.target();
+      if (!canAiAttack(this.game, this.player, target)) continue;
       if (!this.holdsLandNextTo(target, landing)) continue;
       this.sendLandAttack(
         target,
@@ -316,6 +318,9 @@ export class AiAttackBehavior {
     const x = this.game.x(tile);
     const y = this.game.y(tile);
     const unreachablePlayers = new Set<PlayerID>();
+    if (!canAiAttack(this.game, this.player, this.game.terraNullius())) {
+      return null;
+    }
     for (let i = 0; i < 500; i++) {
       const randX = this.random.nextInt(x - 150, x + 150);
       const randY = this.random.nextInt(y - 150, y + 150);
@@ -358,7 +363,7 @@ export class AiAttackBehavior {
         // Normal targeting: return unowned tiles or tiles owned by non-friendly players
         matchesCriteria = !owner.isPlayer() || !owner.isFriendly(this.player);
       }
-      if (!matchesCriteria) {
+      if (!matchesCriteria || !canAiAttack(this.game, this.player, owner)) {
         continue;
       }
 
@@ -1082,6 +1087,7 @@ export class AiAttackBehavior {
   }
 
   sendAttack(target: Player | TerraNullius, force = false): boolean {
+    if (!canAiAttack(this.game, this.player, target)) return false;
     if (!force && !this.shouldAttack(target)) return false;
 
     if (target.isPlayer()) {
@@ -1197,6 +1203,7 @@ export class AiAttackBehavior {
   }
 
   shouldAttack(other: Player | TerraNullius): boolean {
+    if (!canAiAttack(this.game, this.player, other)) return false;
     if (
       // Always attack Terra Nullius, non-humans and traitors
       other.isPlayer() === false ||

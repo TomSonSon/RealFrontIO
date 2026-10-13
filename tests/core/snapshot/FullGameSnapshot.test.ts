@@ -197,8 +197,13 @@ describe.each(VARIANTS)("full game snapshots: %s", (_, overrides) => {
       // Runs during the spawn phase and finishes inside init, so it is never
       // alive at a tick boundary. BasicExecutions.test.ts covers it directly.
       const neverStored = new Set(["Pause"]);
+      // Only real borders games create these; RealBordersInit.test.ts covers them.
+      const realBordersOnly = new Set(["RealBordersInit", "RealBordersStart"]);
       const missing = EXECUTION_SNAPSHOT_TYPES.map((t) => t.name).filter(
-        (name) => !reference.execTypes.has(name) && !neverStored.has(name),
+        (name) =>
+          !reference.execTypes.has(name) &&
+          !neverStored.has(name) &&
+          !realBordersOnly.has(name),
       );
       expect(missing).toEqual([]);
     },

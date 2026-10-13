@@ -9,6 +9,7 @@ import {
   TerrainType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { roster } from "@openfront/engine-api/resources/RealismCountries";
 import { GameID } from "@openfront/engine-api/Schemas";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
@@ -20,6 +21,10 @@ import {
 import { assertNever, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
+import {
+  REAL_BORDERS_ATTACK_INTERVAL_SCALE,
+  REAL_BORDERS_SLOW_INTERVAL_SCALE,
+} from "../realism/RealBordersPolicy";
 import { placeNationCapital } from "../realism/RealisticWorld";
 import {
   NationSchema,
@@ -80,7 +85,7 @@ export class NationExecution implements Execution {
 
   init(mg: Game) {
     this.mg = mg;
-    this.attackRate = this.getAttackRate();
+    this.attackRate = this.getAttackRate() * this.attackIntervalScale();
     this.attackTick = this.random.nextInt(0, this.attackRate);
 
     if (!this.mg.hasPlayer(this.nation.playerInfo.id)) {
@@ -88,6 +93,17 @@ export class NationExecution implements Execution {
     } else {
       this.player = this.mg.player(this.nation.playerInfo.id);
     }
+  }
+
+  private attackIntervalScale(): number {
+    if (!this.mg.config().isRealBorders()) return 1;
+    const slow = roster().find(
+      (c) => c.name === this.nation.playerInfo.name,
+    )?.slow;
+    return (
+      REAL_BORDERS_ATTACK_INTERVAL_SCALE *
+      (slow ? REAL_BORDERS_SLOW_INTERVAL_SCALE : 1)
+    );
   }
 
   private getAttackRate(): number {
@@ -193,7 +209,9 @@ export class NationExecution implements Execution {
 
     if (!this.behaviorsInitialized) {
       this.initializeBehaviors();
-      this.attackBehavior.forceSendAttack(this.mg.terraNullius());
+      if (!this.mg.config().isRealBorders()) {
+        this.attackBehavior.forceSendAttack(this.mg.terraNullius());
+      }
       return;
     }
 
@@ -286,8 +304,12 @@ export class NationExecution implements Execution {
     );
     // Realistic World mode: give the nation a starting capital city once it has
     // settled (first post-spawn tick). Runs exactly once; the placed unit is
-    // persisted in game state like any other unit.
-    if (this.mg.config().isRealisticWorld()) {
+    // persisted in game state like any other unit. Real borders places capitals
+    // in RealBordersStartExecution instead.
+    if (
+      this.mg.config().isRealisticWorld() &&
+      !this.mg.config().isRealBorders()
+    ) {
       const spawnCell = this.nation.spawnCell;
       const preferred =
         spawnCell !== undefined &&

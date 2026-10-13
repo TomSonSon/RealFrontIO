@@ -1,4 +1,3 @@
-import { GameStartInfo } from "@openfront/engine-api/Schemas";
 import {
   Cell,
   GameMapSize,
@@ -13,12 +12,16 @@ import {
   AdditionalNation,
   Nation as ManifestNation,
 } from "@openfront/engine-api/game/MapFiles";
+import { roster } from "@openfront/engine-api/resources/RealismCountries";
+import { GameStartInfo } from "@openfront/engine-api/Schemas";
+import { isRealBordersGame } from "@openfront/engine-lib/configuration/Config";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 
 /**
  * Creates the nations array for a game.
  * If config.nations is a number (custom count), uses that exact count,
  * generating additional nations with random names if needed.
+ * In real borders, returns every roster country and ignores config.nations.
  * If config.nations is "disabled", returns no nations.
  * If config.nations is "default":
  *   - Public HumansVsNations: matches nation count to human player count
@@ -58,6 +61,26 @@ export function createNationsForGame(
   const isHumansVsNations =
     gameStart.config.gameMode === GameMode.Team &&
     gameStart.config.playerTeams === HumansVsNations;
+
+  if (isRealBordersGame(gameStart.config)) {
+    return roster().map(
+      (c) =>
+        new Nation(
+          new Cell(c.anchor[0], c.anchor[1]),
+          new PlayerInfo(
+            c.name,
+            PlayerType.Nation,
+            null,
+            random.nextID(),
+            false,
+            null,
+            [],
+            null,
+            c.flag || null,
+          ),
+        ),
+    );
+  }
 
   const configNations = gameStart.config.nations;
   if (configNations === "disabled") {

@@ -1,5 +1,8 @@
 import {
   Difficulty,
+  GameMapSize,
+  GameMapType,
+  GameMode,
   GameType,
   PlayerType,
   Tick,
@@ -18,6 +21,17 @@ export interface NukeMagnitude {
 }
 
 const DEFAULT_SPAWN_IMMUNITY_TICKS = 5 * 10;
+const REAL_BORDERS_NATION_SPAWN_IMMUNITY_TICKS = 3 * 60 * 10;
+
+/** Real borders: World, Normal size, FFA, with the Realistic World modifier. */
+export function isRealBordersGame(gameConfig: GameConfig): boolean {
+  return (
+    gameConfig.publicGameModifiers?.isRealisticWorld === true &&
+    gameConfig.gameMap === GameMapType.World &&
+    gameConfig.gameMapSize === GameMapSize.Normal &&
+    gameConfig.gameMode === GameMode.FFA
+  );
+}
 
 /** SAM launcher construction duration in ticks (non-instant-build). */
 export const SAM_CONSTRUCTION_TICKS = 30 * 10;
@@ -149,7 +163,12 @@ export class Config {
     );
   }
   nationSpawnImmunityDuration(): Tick {
-    return DEFAULT_SPAWN_IMMUNITY_TICKS;
+    return this.isRealBorders()
+      ? REAL_BORDERS_NATION_SPAWN_IMMUNITY_TICKS
+      : DEFAULT_SPAWN_IMMUNITY_TICKS;
+  }
+  isRealBorders(): boolean {
+    return isRealBordersGame(this._gameConfig);
   }
   hasExtendedSpawnImmunity(): boolean {
     return this.spawnImmunityDuration() > DEFAULT_SPAWN_IMMUNITY_TICKS;
@@ -191,7 +210,7 @@ export class Config {
     );
   }
   isRandomSpawn(): boolean {
-    return this._gameConfig.randomSpawn;
+    return !this.isRealBorders() && this._gameConfig.randomSpawn;
   }
   infiniteTroops(): boolean {
     return this._gameConfig.infiniteTroops;
