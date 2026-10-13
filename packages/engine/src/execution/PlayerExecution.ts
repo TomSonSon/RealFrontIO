@@ -1114,8 +1114,9 @@ export class PlayerExecution implements Execution {
       maxY = -1e9;
     const map = this.map;
     const mySmallID = this.player.smallID();
-    // Realistic World: land held through right of passage borders an ally,
-    // which getCapturingPlayer never lets capture it.
+    // Realistic World: a cluster touching an ally is held through right of
+    // passage; getCapturingPlayer never lets an ally capture it, so it is not
+    // enclosed.
     const skipFriendly = this.config.isRealisticWorld();
     for (let j = 0; j < cluster.length; j++) {
       const tr = cluster[j];
@@ -1129,11 +1130,9 @@ export class PlayerExecution implements Execution {
         if (ownerId !== 0 && ownerId !== mySmallID) {
           if (
             skipFriendly &&
-            (this.mg.playerBySmallID(ownerId) as Player).isFriendly(
-              this.player,
-            )
+            (this.mg.playerBySmallID(ownerId) as Player).isFriendly(this.player)
           ) {
-            continue;
+            return 0;
           }
           hasEnemy = true;
           const x = map.x(n);
@@ -1486,6 +1485,12 @@ export class PlayerExecution implements Execution {
     });
 
     this.player.removeAllAlliances();
+
+    if (this.config.isRealisticWorld()) {
+      for (const e of this.player.getEmbargoes()) {
+        this.player.stopEmbargo(e.target);
+      }
+    }
   }
 
   snapshot(w: SnapshotWriter): ExecRecord {

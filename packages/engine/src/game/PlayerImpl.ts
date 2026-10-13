@@ -55,6 +55,7 @@ import {
   within,
 } from "@openfront/engine-lib/Util";
 import { z } from "zod";
+import { realisticRelationScore } from "../realism/RealisticWorld";
 import {
   newPlayerInfo,
   playerInfoData,
@@ -133,6 +134,12 @@ Object.freeze(EMPTY_EMOJIS);
 
 /** Ticks of good behavior that win back one reputation point (~1 minute). */
 const REPUTATION_RECOVERY_TICKS = 600;
+/** Reputation lost per betrayal. */
+const BETRAYAL_REPUTATION_PENALTY = 40;
+/** Below this reputation no alliance can be formed, as sender or recipient. */
+const ALLIANCE_REPUTATION_FLOOR = -30;
+/** Per-tick step of relation decay. */
+const RELATION_DECAY_STEP = 0.05;
 
 export class PlayerImpl implements Player {
   public _lastTileChange: number = 0;
@@ -843,7 +850,7 @@ export class PlayerImpl implements Player {
 
     // Realistic World: a player who has betrayed this game (reputation below
     // the floor) can't be trusted to form NEW alliances - per-game only.
-    if (this.mg.config().isRealisticWorld() && this.reputation() < -30) {
+    if (this.isAllianceBlacklisted()) {
       return false;
     }
 
@@ -957,7 +964,17 @@ export class PlayerImpl implements Player {
     const recovered = Math.floor(
       (this.mg.ticks() - this.markedTraitorTick) / REPUTATION_RECOVERY_TICKS,
     );
-    return Math.min(0, recovered - 40 * this._betrayalCount);
+    return Math.min(
+      0,
+      recovered - BETRAYAL_REPUTATION_PENALTY * this._betrayalCount,
+    );
+  }
+
+  isAllianceBlacklisted(): boolean {
+    return (
+      this.mg.config().isRealisticWorld() &&
+      this.reputation() < ALLIANCE_REPUTATION_FLOOR
+    );
   }
 
   createAllianceRequest(recipient: Player): AllianceRequest | null {
@@ -1008,12 +1025,20 @@ export class PlayerImpl implements Player {
   }
 
   decayRelations() {
+    const realistic = this.mg.config().isRealisticWorld();
     this.relations.forEach((r: number, p: Player) => {
-      const sign = -1 * Math.sign(r);
-      const delta = 0.05;
+      // Realistic World: nation pairs settle at their real-world baseline.
+      const baseline =
+        realistic &&
+        this.type() === PlayerType.Nation &&
+        p.type() === PlayerType.Nation
+          ? (realisticRelationScore(this.name(), p.name()) ?? 0)
+          : 0;
+      const sign = -1 * Math.sign(r - baseline);
+      const delta = RELATION_DECAY_STEP;
       r += sign * delta;
-      if (Math.abs(r) < delta * 2) {
-        r = 0;
+      if (Math.abs(r - baseline) < delta * 2) {
+        r = baseline;
       }
       this.relations.set(p, r);
     });

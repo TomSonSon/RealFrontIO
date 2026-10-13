@@ -1,5 +1,10 @@
-import { GameMapType, PlayerType } from "@openfront/engine-api/game/GameTypes";
+import {
+  GameMapSize,
+  GameMapType,
+  PlayerType,
+} from "@openfront/engine-api/game/GameTypes";
 import { CHOKEPOINTS } from "@openfront/engine-api/resources/Chokepoints";
+import { computeMultipliers } from "@openfront/engine-api/resources/TechNodes";
 import { EventBus } from "@openfront/shared/EventBus";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RealismPanel } from "../../src/client/components/RealismPanel";
@@ -9,7 +14,10 @@ import {
   SendPurchaseTechIntentEvent,
 } from "../../src/client/Transport";
 import { notableLobbySettings } from "../../src/client/utilities/LobbySettingsSummary";
-import { realisticWorldApplies } from "../../src/client/utilities/RealisticWorldToggle";
+import {
+  realisticWorldApplies,
+  techAdjustedTroopIncrease,
+} from "../../src/client/utilities/RealisticWorldToggle";
 import type { GameView, PlayerView } from "../../src/client/view";
 import { testGameConfig } from "../util/Wire";
 
@@ -20,9 +28,15 @@ vi.mock("../../src/client/Utils", async (importOriginal) => ({
 
 describe("realistic world toggle", () => {
   it("applies only on the World map", () => {
-    expect(realisticWorldApplies(GameMapType.World, true)).toBe(true);
-    expect(realisticWorldApplies(GameMapType.World, false)).toBe(false);
-    expect(realisticWorldApplies(GameMapType.Africa, true)).toBe(false);
+    expect(realisticWorldApplies(GameMapType.World, true, undefined)).toBe(
+      true,
+    );
+    expect(realisticWorldApplies(GameMapType.World, false, undefined)).toBe(
+      false,
+    );
+    expect(realisticWorldApplies(GameMapType.Africa, true, undefined)).toBe(
+      false,
+    );
   });
 
   it("shows up in the lobby settings summary", () => {
@@ -172,5 +186,50 @@ describe("coalition war candidates", () => {
         (c) => (c as never as (typeof allies)[0]).type() === PlayerType.Nation,
       ),
     ).toBe(true);
+  });
+});
+
+describe("tech-adjusted troop regen", () => {
+  function view(opts: { realism: boolean; owned: string[]; troops: number }) {
+    const player = {
+      techRanks: () => opts.owned,
+      troops: () => opts.troops,
+    } as unknown as PlayerView;
+    const game = {
+      config: () => ({
+        troopIncreaseRate: () => 100,
+        maxTroops: () => 1000,
+        gameConfig: () => ({
+          gameMap: GameMapType.World,
+          publicGameModifiers: { isRealisticWorld: opts.realism },
+        }),
+      }),
+    } as unknown as GameView;
+    return techAdjustedTroopIncrease(game, player);
+  }
+
+  it("scales positive regen by the troopRegen multiplier", () => {
+    const { troopRegen } = computeMultipliers(new Set(["military_1"]));
+    expect(troopRegen).toBeGreaterThan(1);
+    expect(
+      view({ realism: true, owned: ["military_1"], troops: 0 }),
+    ).toBeCloseTo(100 * troopRegen);
+  });
+
+  it("leaves the rate alone without realism or without tech", () => {
+    expect(view({ realism: false, owned: ["military_1"], troops: 0 })).toBe(
+      100,
+    );
+    expect(view({ realism: true, owned: [], troops: 0 })).toBe(100);
+  });
+
+  it("never grows past the cap", () => {
+    expect(view({ realism: true, owned: ["military_1"], troops: 995 })).toBe(5);
+  });
+
+  it("is off for a Compact map", () => {
+    expect(
+      realisticWorldApplies(GameMapType.World, true, GameMapSize.Compact),
+    ).toBe(false);
   });
 });

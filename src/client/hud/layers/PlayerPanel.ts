@@ -341,6 +341,7 @@ export class PlayerPanel extends LitElement implements Controller {
     return realisticWorldApplies(
       gc.gameMap,
       gc.publicGameModifiers?.isRealisticWorld === true,
+      gc.gameMapSize,
     );
   }
 

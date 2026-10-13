@@ -444,6 +444,8 @@ export interface Player extends PlayerLike {
   betrayals(): number;
   /** Per-game reliability (lower = a traitor nobody trusts this game). Derived, no persistence. */
   reputation(): number;
+  /** Realistic World: a betrayer nobody will ally with this game. */
+  isAllianceBlacklisted(): boolean;
 
   // Targeting
   canTarget(other: Player): boolean;

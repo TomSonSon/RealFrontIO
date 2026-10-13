@@ -97,6 +97,39 @@ describe("declare_coalition_war through the executor", () => {
     expect(nation.hasEmbargoAgainst(target)).toBe(true);
   });
 
+  test("a dead nation is never drafted", async () => {
+    const { game, initiator, target, nation } = await scenario();
+    [...nation.tiles()].forEach((t) => nation.relinquish(t));
+    expect(nation.isAlive()).toBe(false);
+    send(
+      game,
+      {
+        type: "declare_coalition_war",
+        target: target.id(),
+        candidates: [nation.id()],
+      },
+      initiator,
+    );
+    expect(nation.hasEmbargoAgainst(target)).toBe(false);
+  });
+
+  test("snapshots and round-trips right after the intent tick", async () => {
+    const { game, initiator, target, nation } = await scenario();
+    send(
+      game,
+      {
+        type: "declare_coalition_war",
+        target: target.id(),
+        candidates: [nation.id()],
+      },
+      initiator,
+    );
+    const { restored } = await roundTrip(game, "big_plains");
+    expect(diffSnapshots(snapshotGame(restored), snapshotGame(game))).toEqual(
+      [],
+    );
+  });
+
   test("a dead initiator cannot declare", async () => {
     const { game, initiator, target, nation } = await scenario();
     [...initiator.tiles()].forEach((t) => initiator.relinquish(t));
@@ -180,6 +213,21 @@ describe("purchase_tech through the executor", () => {
     [...p.tiles()].forEach((t) => p.relinquish(t));
     send(game, { type: "purchase_tech", techId: "economy_1" }, p);
     expect(game.ownedTechNodeIds(p)).toEqual([]);
+  });
+
+  test("snapshots and round-trips right after the intent tick", async () => {
+    const game = await setup("big_plains", REALISM);
+    const p = addPlayer(game, "P");
+    grantLand(game, [p]);
+    p.addGold(1_000_000n);
+    send(game, { type: "purchase_tech", techId: "economy_1" }, p);
+    const { restored } = await roundTrip(game, "big_plains");
+    expect(diffSnapshots(snapshotGame(restored), snapshotGame(game))).toEqual(
+      [],
+    );
+    expect(restored.ownedTechNodeIds(restored.player("P"))).toEqual([
+      "economy_1",
+    ]);
   });
 
   test("the schema rejects an empty id", () => {

@@ -15,6 +15,10 @@ import { DoomsdayClockExecutionSnapshot } from "../execution/DoomsdayClockExecut
 import { EmbargoAllExecutionSnapshot } from "../execution/EmbargoAllExecution";
 import { EmbargoExecutionSnapshot } from "../execution/EmbargoExecution";
 import { EmojiExecutionSnapshot } from "../execution/EmojiExecution";
+import {
+  DeclareCoalitionWarExecutionSnapshot,
+  PurchaseTechExecutionSnapshot,
+} from "../execution/ExecutionManager";
 import { FactoryExecutionSnapshot } from "../execution/FactoryExecution";
 import { MarkDisconnectedExecutionSnapshot } from "../execution/MarkDisconnectedExecution";
 import { MirvExecutionSnapshot } from "../execution/MIRVExecution";
@@ -61,6 +65,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   BreakAllianceExecutionSnapshot,
   CityExecutionSnapshot,
   ConstructionExecutionSnapshot,
+  DeclareCoalitionWarExecutionSnapshot,
   DefensePostExecutionSnapshot,
   DeleteUnitExecutionSnapshot,
   DonateGoldExecutionSnapshot,
@@ -80,6 +85,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   PauseExecutionSnapshot,
   PlayerExecutionSnapshot,
   PortExecutionSnapshot,
+  PurchaseTechExecutionSnapshot,
   QuickChatExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,

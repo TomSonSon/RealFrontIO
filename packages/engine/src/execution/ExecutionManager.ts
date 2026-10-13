@@ -7,7 +7,9 @@ import {
 } from "@openfront/engine-api/Schemas";
 import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import { simpleHash } from "@openfront/engine-lib/Util";
+import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
+import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type { ExecRecord } from "../snapshot/SnapshotContext";
 import { AllianceExtensionExecution } from "./alliance/AllianceExtensionExecution";
 import { AllianceRejectExecution } from "./alliance/AllianceRejectExecution";
@@ -25,7 +27,7 @@ import { EmojiExecution } from "./EmojiExecution";
 import { MarkDisconnectedExecution } from "./MarkDisconnectedExecution";
 import { MoveWarshipExecution } from "./MoveWarshipExecution";
 import { NationExecution } from "./NationExecution";
-import { NoOpExecution, NoOpExecutionSnapshot } from "./NoOpExecution";
+import { NoOpExecution } from "./NoOpExecution";
 import { PauseExecution } from "./PauseExecution";
 import { QuickChatExecution } from "./QuickChatExecution";
 import { RetreatExecution } from "./RetreatExecution";
@@ -202,11 +204,10 @@ export class Executor {
  * Classic mode (no realism) returns [] and leaves everything untouched, so
  * this execution is a harmless no-op outside Realistic World too.
  *
- * It runs once during the tick that adds it and is immediately inactive, so it
- * never survives a tick boundary and needs no snapshot state of its own - the
- * committed war is fully reflected in engine state (relations/embargoes), not
- * in this execution object. snapshot() reuses the NoOp snapshot type so no
- * ExecutionRegistry entry is required.
+ * It does its work in init() and is immediately inactive, but the tick that
+ * inits it can leave it in the execution list, so it has its own (stateless)
+ * snapshot type: the committed war is fully reflected in engine state
+ * (relations/embargoes), not in this execution object.
  */
 class DeclareCoalitionWarExecution implements Execution {
   constructor(
@@ -231,21 +232,30 @@ class DeclareCoalitionWarExecution implements Execution {
     const candidates = [...new Set(this.candidateIDs)]
       .filter((id) => mg.hasPlayer(id))
       .map((id) => mg.player(id))
-      .filter((p) => p.type() === PlayerType.Nation);
+      .filter((p) => p.type() === PlayerType.Nation && p.isAlive());
     mg.declareCoalitionWar(this.initiator, target, candidates);
   }
 
   tick(): void {}
 
   snapshot(): ExecRecord {
-    return NoOpExecutionSnapshot.write({});
+    return DeclareCoalitionWarExecutionSnapshot.write({});
   }
+
+  restoreSnapshot(): void {}
 }
+
+export const DeclareCoalitionWarExecutionSnapshot = execSnapshotType({
+  name: "DeclareCoalitionWar",
+  version: 1,
+  schema: z.object({}),
+  cls: () => DeclareCoalitionWarExecution,
+});
 
 /**
  * Buys a tech-tree node for the sender (Realistic World only). Invalid
  * purchases are no-ops; the work happens in init() like the coalition
- * declaration, so there is no state to snapshot.
+ * declaration, so its snapshot is stateless.
  */
 class PurchaseTechExecution implements Execution {
   constructor(
@@ -270,6 +280,15 @@ class PurchaseTechExecution implements Execution {
   tick(): void {}
 
   snapshot(): ExecRecord {
-    return NoOpExecutionSnapshot.write({});
+    return PurchaseTechExecutionSnapshot.write({});
   }
+
+  restoreSnapshot(): void {}
 }
+
+export const PurchaseTechExecutionSnapshot = execSnapshotType({
+  name: "PurchaseTech",
+  version: 1,
+  schema: z.object({}),
+  cls: () => PurchaseTechExecution,
+});

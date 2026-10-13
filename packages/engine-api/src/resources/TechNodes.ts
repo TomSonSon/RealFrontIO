@@ -149,3 +149,45 @@ export function canPurchaseTech(
   if (!canPurchase(new Set(ownedNodeIds), id)) return false;
   return gold >= node.cost;
 }
+
+/**
+ * The aggregate multipliers for an owned set of nodes. Sums the per-hook
+ * addends onto a base of 1 (identity = no tech / classic mode). Returns a fresh
+ * object each call; callers treat it as immutable.
+ */
+export interface TechMultipliers {
+  troopRegen: number;
+  attackPower: number;
+  goldIncome: number;
+  structureCost: number;
+}
+
+export const IDENTITY_MULTIPLIERS: TechMultipliers = {
+  troopRegen: 1,
+  attackPower: 1,
+  goldIncome: 1,
+  structureCost: 1,
+};
+
+export function computeMultipliers(
+  ownedNodeIds: ReadonlySet<string>,
+): TechMultipliers {
+  if (ownedNodeIds.size === 0) return { ...IDENTITY_MULTIPLIERS };
+  let troopRegen = 1;
+  let attackPower = 1;
+  let goldIncome = 1;
+  let structureCost = 1;
+  for (const id of ownedNodeIds) {
+    const node = nodeById(id);
+    if (node === undefined) continue;
+    if (node.effects.troopRegen !== undefined)
+      troopRegen += node.effects.troopRegen;
+    if (node.effects.attackPower !== undefined)
+      attackPower += node.effects.attackPower;
+    if (node.effects.goldIncome !== undefined)
+      goldIncome += node.effects.goldIncome;
+    if (node.effects.structureCost !== undefined)
+      structureCost += node.effects.structureCost;
+  }
+  return { troopRegen, attackPower, goldIncome, structureCost };
+}

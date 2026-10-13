@@ -297,8 +297,10 @@ describe("TradeShipExecution chokepoint toll (realistic world)", () => {
     vi.restoreAllMocks();
   });
 
-  it("credits the controller the Global toll once per voyage", async () => {
-    const { exec, controller } = await makeHarness({ realistic: true });
+  it("records the Global toll once per voyage and pays it out of the payout", async () => {
+    const { game, origOwner, dstOwner, controller, exec } = await makeHarness({
+      realistic: true,
+    });
     vi.spyOn(Chokepoints, "chokepointContains").mockImplementation(
       (c: any) => c.id === "hormuz",
     );
@@ -307,13 +309,39 @@ describe("TradeShipExecution chokepoint toll (realistic world)", () => {
     );
 
     exec.tick(1);
-    // TIER_BASE_TOLL.Global * goldMultiplier(1)
-    expect(controller.addGold).toHaveBeenCalledWith(5000n);
-    expect(controller.addGold).toHaveBeenCalledTimes(1);
-
     // Same strait re-entered: one toll per strait per voyage.
     exec.tick(2);
+    expect((exec as any).chokepointsTolledThisVoyage).toHaveLength(1);
+    // Nothing is minted while the ship sails.
+    expect(controller.addGold).not.toHaveBeenCalled();
+
+    // A payout well above the toll so neither side is capped.
+    vi.spyOn(game.config(), "tradeShipGold").mockReturnValue(20_000n);
+    (exec as any).complete();
+    const payout = BigInt(
+      Math.floor(20_000 * game.config().tradeMultiplier("other")),
+    );
+    // TIER_BASE_TOLL.Global * goldMultiplier(1)
     expect(controller.addGold).toHaveBeenCalledTimes(1);
+    expect(controller.addGold).toHaveBeenCalledWith(5000n);
+    const ownerGain = origOwner.addGold.mock.calls[0][0] as bigint;
+    expect(ownerGain).toBe(payout - 5000n);
+    expect(dstOwner.addGold).toHaveBeenCalledWith(ownerGain, expect.anything());
+    expect(ownerGain + 5000n).toBe(payout);
+  });
+
+  it("never deducts more than the payout", async () => {
+    const { game, origOwner, controller, exec } = await makeHarness({
+      realistic: true,
+    });
+    (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
+    vi.spyOn(game.config(), "tradeShipGold").mockReturnValue(1_000n);
+    (exec as any).complete();
+    const payout = BigInt(
+      Math.floor(1_000 * game.config().tradeMultiplier("other")),
+    );
+    expect(controller.addGold).toHaveBeenCalledWith(payout);
+    expect(origOwner.addGold.mock.calls[0][0]).toBe(0n);
   });
 
   it("scans a strait once per voyage even when it has no controller", async () => {
@@ -368,19 +396,19 @@ describe("TradeShipExecution chokepoint interdiction (realistic world)", () => {
     (exec as any).tilesTraveled = 5;
     (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
     controller.hasEmbargoAgainst = vi.fn(() => true);
+    vi.spyOn(game.config(), "tradeShipGold").mockReturnValue(100_000n);
 
     (exec as any).complete();
 
     const cfg = game.config();
     const base = cfg.tradeShipGold(5, origOwner);
     const pre = BigInt(Math.floor(Number(base) * cfg.tradeMultiplier("other")));
-    // hormuz suggestedInterdictionFraction = 0.5 -> keep 0.5.
-    const expected = BigInt(Math.floor(Number(pre) * 0.5));
+    // hormuz suggestedInterdictionFraction = 0.5 -> keep 0.5, then the toll.
+    const expected = BigInt(Math.floor(Number(pre) * 0.5)) - 5000n;
 
     expect(origOwner.addGold).toHaveBeenCalledWith(expected, srcPort.tile());
     expect(dstOwner.addGold).toHaveBeenCalledWith(expected, dstPort.tile());
-    // Simplified v1: no spoils to the controller.
-    expect(controller.addGold).not.toHaveBeenCalled();
+    expect(controller.addGold).toHaveBeenCalledWith(5000n);
   });
 
   it("does not reduce the payout without an embargo", async () => {
@@ -389,14 +417,14 @@ describe("TradeShipExecution chokepoint interdiction (realistic world)", () => {
     (exec as any).tilesTraveled = 5;
     (exec as any).chokepointsTolledThisVoyage = [{ id: "hormuz", controller }];
     controller.hasEmbargoAgainst = vi.fn(() => false);
+    vi.spyOn(game.config(), "tradeShipGold").mockReturnValue(100_000n);
 
     (exec as any).complete();
 
     const cfg = game.config();
     const base = cfg.tradeShipGold(5, origOwner);
-    const expected = BigInt(
-      Math.floor(Number(base) * cfg.tradeMultiplier("other")),
-    );
+    const expected =
+      BigInt(Math.floor(Number(base) * cfg.tradeMultiplier("other"))) - 5000n;
     expect(origOwner.addGold).toHaveBeenCalledWith(expected, srcPort.tile());
     expect(dstOwner.addGold).toHaveBeenCalledWith(expected, dstPort.tile());
   });

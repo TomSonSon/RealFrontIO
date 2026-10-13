@@ -1049,13 +1049,13 @@ export class GameImpl implements Game {
   ): Player[] {
     if (!this._config.isRealisticWorld()) return [];
     const joined: Player[] = [];
+    const random = new PseudoRandom(
+      simpleHash(initiator.id()) + simpleHash(target.id()),
+    );
     for (const c of candidates) {
       if (c === initiator || c === target) continue;
       if (!initiator.isFriendly(c)) continue; // only allies tag along
       if (c.isFriendly(target)) continue; // never join a war on a friend
-      const random = new PseudoRandom(
-        simpleHash(c.id()) + simpleHash(target.id()),
-      );
       if (
         new NationCoalitionBehavior(random, this, c).voteYes(initiator, target)
       ) {
@@ -1537,12 +1537,6 @@ export class GameImpl implements Game {
   sharedWaterComponents(player: Player): Set<number> | null {
     return this._sharedWaterCache.get(player);
   }
-  /**
-   * Game-level state for a snapshot. Taken at a tick boundary, so the
-   * per-tick update buffers (updates, tile pairs, player and attack quads,
-   * motion plans, nuke impacts) are always drained and are not stored.
-   */
-
   // --- Realistic World tech tree ---
 
   private techRanksFor(player: Player): string[] {
@@ -1579,9 +1573,8 @@ export class GameImpl implements Game {
 
   /**
    * Per-game, permanent tech purchase (no refunds). Deterministic and gated
-   * behind Realistic World. Again gated on the caller actually being the owner
-   * of the gold (gold is deducted here). Returns false and changes nothing when
-   * the tree is off or the purchase is not valid.
+   * behind Realistic World. Returns false and changes nothing when the tree is
+   * off or the purchase is not valid.
    */
   spendTech(player: Player, nodeId: string): boolean {
     if (!this._config.isRealisticWorld()) return false;
@@ -1592,12 +1585,7 @@ export class GameImpl implements Game {
     const cost = BigInt(node.cost);
     if (player.gold() < cost) return false;
 
-    const removed = player.removeGold(cost);
-    if (removed === 0n) return false;
-    const ranks = this.techRanksFor(player);
-    ranks.push(nodeId);
-    this._techRanks.set(player.smallID(), ranks);
-    this._techMultipliers.delete(player.smallID());
+    this.spendTechInternal(player, nodeId);
     return true;
   }
 
@@ -1644,7 +1632,7 @@ export class GameImpl implements Game {
     }
   }
 
-  /** Internal spend without re-checking the owner/realism gate (policy path). */
+  /** Deducts the node cost and records the rank; callers validate first. */
   private spendTechInternal(player: Player, nodeId: string): void {
     const node = nodeById(nodeId)!;
     player.removeGold(BigInt(node.cost));
@@ -1660,6 +1648,11 @@ export class GameImpl implements Game {
     return { entries };
   }
 
+  /**
+   * Game-level state for a snapshot. Taken at a tick boundary, so the
+   * per-tick update buffers (updates, tile pairs, player and attack quads,
+   * motion plans, nuke impacts) are always drained and are not stored.
+   */
   snapshotState(w: SnapshotWriter): GameState {
     // Exec list order is state: register both lists first so their table
     // rows come out in tick order.

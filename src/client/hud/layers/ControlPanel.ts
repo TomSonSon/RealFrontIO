@@ -13,6 +13,7 @@ import { Controller } from "../../Controller";
 import { AttackRatioEvent } from "../../InputHandler";
 import { UIState } from "../../UIState";
 import { USER_SETTINGS_CHANGED_EVENT, UserSettings } from "../../UserSettings";
+import { techAdjustedTroopIncrease } from "../../utilities/RealisticWorldToggle";
 import { getGamesPlayed, translateText } from "../../Utils";
 import { GameView } from "../../view";
 import { PlayerView } from "../../view/PlayerView";
@@ -134,7 +135,7 @@ export class ControlPanel extends LitElement implements Controller {
       .outgoingAttacks()
       .map((a) => a.troops)
       .reduce((a, b) => a + b, 0);
-    this.troopRate = config.troopIncreaseRate(player) * 10;
+    this.troopRate = techAdjustedTroopIncrease(this.game, player) * 10;
 
     const helpEnabled = new UserSettings().helpMessages();
 
@@ -319,7 +320,7 @@ export class ControlPanel extends LitElement implements Controller {
   private updateTroopIncrease() {
     const player = this.game?.myPlayer();
     if (player === null) return;
-    const troopIncreaseRate = this.game.config().troopIncreaseRate(player);
+    const troopIncreaseRate = techAdjustedTroopIncrease(this.game, player);
     this._troopRateIsIncreasing =
       troopIncreaseRate >= this._lastTroopIncreaseRate;
     this._lastTroopIncreaseRate = troopIncreaseRate;

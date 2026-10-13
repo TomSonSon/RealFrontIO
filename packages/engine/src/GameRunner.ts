@@ -309,7 +309,10 @@ export class GameRunner {
     const next = this.game
       .chokepointControllers()
       .map((c) => ({ id: c.id, controller: c.controller?.smallID() ?? null }));
-    if (next.length === 0) return undefined;
+    if (next.length === 0) {
+      this.lastChokepointKey = "";
+      return undefined;
+    }
     const key = next.map((c) => `${c.id}:${c.controller}`).join(",");
     if (key === this.lastChokepointKey) return undefined;
     this.lastChokepointKey = key;

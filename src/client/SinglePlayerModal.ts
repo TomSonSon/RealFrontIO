@@ -556,7 +556,8 @@ export class SinglePlayerModal extends BaseModal {
                   {
                     labelKey: "game_settings.realistic_world",
                     checked: this.realisticWorld,
-                    hidden: this.selectedMap !== GameMapType.World,
+                    hidden:
+                      this.selectedMap !== GameMapType.World || this.compactMap,
                   },
                   {
                     labelKey: "game_settings.doomsday_clock",
@@ -771,6 +772,7 @@ export class SinglePlayerModal extends BaseModal {
 
   private handleCompactMapChange(val: boolean) {
     this.compactMap = val;
+    if (val) this.realisticWorld = false;
     this.bots = getBotsForCompactMap(this.bots, val);
     this.nations = getNationsForCompactMap(
       this.nations,
@@ -1193,7 +1195,11 @@ export class SinglePlayerModal extends BaseModal {
                   ? { customAllianceDuration: this.customAllianceMinutes ?? 0 }
                   : {}),
                 ...(this.waterNukes ? { waterNukes: true } : {}),
-                ...(realisticWorldApplies(this.selectedMap, this.realisticWorld)
+                ...(realisticWorldApplies(
+                  this.selectedMap,
+                  this.realisticWorld,
+                  this.compactMap ? GameMapSize.Compact : GameMapSize.Normal,
+                )
                   ? { publicGameModifiers: { isRealisticWorld: true } }
                   : {}),
                 ...(this.doomsdayClock

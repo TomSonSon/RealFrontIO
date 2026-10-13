@@ -117,6 +117,8 @@ const MUTUALLY_EXCLUSIVE_MODIFIERS: [ModifierKey, ModifierKey][] = [
   ["startingGold25M", "startingGold1M"],
   ["isHardNations", "startingGold25M"],
   ["isRealisticWorld", "isAlliancesDisabled"],
+  ["isRealisticWorld", "startingGold25M"],
+  ["isRealisticWorld", "isCompact"],
   ["isNukesDisabled", "isSAMsDisabled"],
   ["isNukesDisabled", "isWaterNukes"],
 ];
@@ -268,8 +270,11 @@ export class MapPlaylist {
       excludedModifiers.push("isPeaceTime"); // Nations don't have PVP immunity
     }
 
-    // Realism seeds are keyed by World-map nation names.
-    if (map !== GameMapType.World) {
+    // Realism seeds are keyed by World-map nation names and need nations.
+    if (
+      map !== GameMapType.World ||
+      (mode === GameMode.Team && playerTeams !== HumansVsNations)
+    ) {
       excludedModifiers.push("isRealisticWorld");
     }
 
@@ -365,6 +370,7 @@ export class MapPlaylist {
           !isRandomSpawn &&
           !isCompact &&
           !isHardNations &&
+          !isRealisticWorld &&
           startingGold === undefined &&
           goldMultiplier === undefined &&
           !isAlliancesDisabled &&

@@ -729,6 +729,8 @@ export function placeNationCapital(
     }
   }
   if (tile !== undefined) {
+    // The capital is free: credit the exact price buildUnit is about to charge.
+    player.addGold(game.unitInfo(UnitType.City).cost(game, player));
     player.buildUnit(UnitType.City, tile, {});
   }
 }

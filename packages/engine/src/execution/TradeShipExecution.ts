@@ -217,12 +217,12 @@ export class TradeShipExecution implements Execution {
   }
 
   /**
-   * Realistic World passive toll: for each chokepoint whose water band the
-   * ship's current tile lies in, credit its controller a fixed tier toll -
-   * capped at one toll per strait per voyage (tracked in
-   * `chokepointsTolledThisVoyage`). The controller's own / team / ally ships
-   * transit toll-free (right of passage). Deterministic: pure helpers over
-   * current tile ownership.
+   * Realistic World passive toll: records each chokepoint whose water band the
+   * ship's current tile lies in, at most once per strait per voyage (tracked
+   * in `chokepointsTolledThisVoyage`). The toll itself is deducted from the
+   * payout and paid to the controller on arrival (see payTolls). The
+   * controller's own / team / ally ships transit toll-free (right of
+   * passage). Deterministic: pure helpers over current tile ownership.
    */
   private applyChokepointTolls(tile: TileRef): void {
     if (this.tradeShip === undefined) return;
@@ -230,14 +230,12 @@ export class TradeShipExecution implements Execution {
     const x = this.mg.map().x(tile);
     const y = this.mg.map().y(tile);
     for (const cp of CHOKEPOINTS) {
-      if (this.chokepointsChecked.includes(cp.id)) continue;
       if (!chokepointContains(cp, x, y)) continue;
+      if (this.chokepointsChecked.includes(cp.id)) continue;
       this.chokepointsChecked.push(cp.id);
       const controller = chokepointController(this.mg, cp);
       if (controller === null) continue;
       if (isTollExempt(shipOwner, controller)) continue;
-      const toll = tollForTier(cp.tier, this.mg.config().goldMultiplier());
-      controller.addGold(toll);
       this.chokepointsTolledThisVoyage.push({ id: cp.id, controller });
     }
   }
@@ -264,6 +262,25 @@ export class TradeShipExecution implements Execution {
     return BigInt(Math.floor(Number(gold) * multiplier));
   }
 
+  /**
+   * Takes the voyage's tolls out of the payout (never more than the payout)
+   * and pays each controller exactly what was deducted. Returns the payout
+   * left for the port owners.
+   */
+  private payTolls(gold: Gold): Gold {
+    let remaining = gold;
+    for (const { id, controller } of this.chokepointsTolledThisVoyage) {
+      const cp = getChokepoint(id);
+      if (cp === undefined) continue;
+      const toll = tollForTier(cp.tier, this.mg.config().goldMultiplier());
+      const paid = toll < remaining ? toll : remaining;
+      if (paid <= 0n) continue;
+      controller.addGold(paid);
+      remaining -= paid;
+    }
+    return remaining;
+  }
+
   private complete() {
     this.active = false;
     this.tradeShip!.delete(false);
@@ -287,6 +304,7 @@ export class TradeShipExecution implements Execution {
       // Chokepoint interdiction: a controller embargoing the destination
       // port's owner cuts the transiting ship's payout.
       gold = this.applyInterdiction(gold);
+      gold = this.payTolls(gold);
     }
 
     if (this.wasCaptured && this.tradeShip!.owner() === this.origOwner) {

@@ -39,12 +39,12 @@ const malusForRetreat = 25;
 const FOCUS_RADIUS = 40; // tiles from the focus tile treated as the "main effort"
 const FOCUS_PRIORITY_BONUS = 60; // min-heap priority offset (focus dequeues first)
 const FOCUS_SPEED_MIN = 0.5; // budget cost multiplier at the focus (2x throughput)
-const FOCUS_SPEED_MAX = 2.0; // budget cost multiplier far away (0.5x throughput)
+const FOCUS_SPEED_MAX = 1.0; // budget cost multiplier far away (a focus never slows an attack)
 
 /**
  * Per-tick budget weight for a conquered tile at `dist` tiles from the focus.
- * Near the focus tiles are cheap (more conquered per tick); far away they are
- * expensive (fewer per tick - the economy-of-force drip on other borders).
+ * Near the focus tiles are cheap (more conquered per tick); far away they cost
+ * the same as an unfocused attack.
  * Monotone, deterministic, pure.
  */
 export function focusBudgetWeight(dist: number): number {
@@ -495,6 +495,7 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
+      attackerCombatPower: this.mg.config().attackCombatPower(this._owner),
     };
   }
 

@@ -30,10 +30,10 @@ export class NationCoalitionBehavior {
   maybeDeclareWar(): void {
     if (!this.game.config().isRealisticWorld()) return;
     if (!this.random.chance(30)) return;
-    const candidates = this.player
+    const allies = this.player
       .allies()
       .filter((a) => a.type() === PlayerType.Nation);
-    if (candidates.length === 0) return;
+    if (allies.length === 0) return;
     const target = this.game
       .players()
       .find(
@@ -44,6 +44,13 @@ export class NationCoalitionBehavior {
           this.player.relation(p) === Relation.Hostile,
       );
     if (target === undefined) return;
+    const candidates = allies.filter(
+      (a) =>
+        !(
+          a.relation(target) === Relation.Hostile && a.hasEmbargoAgainst(target)
+        ),
+    );
+    if (candidates.length === 0) return;
     this.game.declareCoalitionWar(this.player, target, candidates);
   }
 

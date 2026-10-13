@@ -235,8 +235,10 @@ describe("chokepoint controllers (Realistic World)", () => {
   test("empty on a World map that is not the Normal size (Compact)", async () => {
     const compact = await setup("big_plains", {
       gameMap: GameMapType.World,
+      gameMapSize: GameMapSize.Compact,
       publicGameModifiers: { isRealisticWorld: true },
     });
+    expect(compact.config().isRealisticWorld()).toBe(false);
     expect(compact.width()).not.toBe(1000);
     expect(compact.chokepointControllers()).toEqual([]);
     const updates: GameUpdateViewData[] = [];

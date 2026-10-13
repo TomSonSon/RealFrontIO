@@ -1,5 +1,6 @@
 import {
   Difficulty,
+  GameMapSize,
   GameMapType,
   Gold,
   PlayerInfo,
@@ -45,8 +46,8 @@ export interface AttackLogicInput {
   borderSize: number;
   /**
    * Optional combat-power factor (1 = none) scaling the per-tile loss
-   * exchange. Not set by the live sim: tech attackPower already applies
-   * through attackAmount.
+   * exchange. Set by AttackExecution from the attacker's tech attackPower
+   * (identity outside Realistic World).
    */
   attackerCombatPower?: number;
 }
@@ -196,7 +197,8 @@ export class EngineConfig extends Config {
   isRealisticWorld(): boolean {
     return (
       (this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false) &&
-      this._gameConfig.gameMap === GameMapType.World
+      this._gameConfig.gameMap === GameMapType.World &&
+      this._gameConfig.gameMapSize !== GameMapSize.Compact
     );
   }
 
@@ -226,6 +228,11 @@ export class EngineConfig extends Config {
     return this._techTreeProvider
       ? this._techTreeProvider(player)
       : IDENTITY_MULTIPLIERS;
+  }
+
+  /** Tech attackPower as a per-tile combat factor; 1 outside realism. */
+  attackCombatPower(player: PlayerLike): number {
+    return this.techMultipliersFor(player).attackPower;
   }
 
   bots(): number {
@@ -501,7 +508,8 @@ export class EngineConfig extends Config {
     ) {
       const seed = realisticSeedFor(playerInfo.name);
       if (seed !== undefined) {
-        return BigInt(seed.gold);
+        const configured = BigInt(this._gameConfig.startingGold ?? 0);
+        return configured > BigInt(seed.gold) ? configured : BigInt(seed.gold);
       }
     }
     const base = BigInt(this._gameConfig.startingGold ?? 0);
@@ -789,7 +797,9 @@ export class EngineConfig extends Config {
   override troopIncreaseRate(player: PlayerLike): number {
     const base = super.troopIncreaseRate(player);
     const troopRegen = this.techMultipliersFor(player).troopRegen;
-    return troopRegen === 1 ? base : Math.round(base * troopRegen);
+    if (troopRegen === 1 || base <= 0) return base;
+    const room = this.maxTroops(player) - player.troops();
+    return Math.min(Math.round(base * troopRegen), Math.max(room, 0));
   }
 
   nukeSpeed(unitType: UnitType): number {

@@ -711,7 +711,8 @@ export class HostLobbyModal extends BaseModal {
                   {
                     labelKey: "game_settings.realistic_world",
                     checked: this.realisticWorld,
-                    hidden: this.selectedMap !== GameMapType.World,
+                    hidden:
+                      this.selectedMap !== GameMapType.World || this.compactMap,
                   },
                   {
                     labelKey: "game_settings.doomsday_clock",
@@ -1448,6 +1449,7 @@ export class HostLobbyModal extends BaseModal {
 
   private handleCompactMapChange = (val: boolean) => {
     this.compactMap = val;
+    if (val) this.realisticWorld = false;
     this.bots = getBotsForCompactMap(this.bots, val);
     this.nations = getNationsForCompactMap(
       this.nations,
@@ -1714,6 +1716,7 @@ export class HostLobbyModal extends BaseModal {
               isRealisticWorld: realisticWorldApplies(
                 this.selectedMap,
                 this.realisticWorld,
+                this.compactMap ? GameMapSize.Compact : GameMapSize.Normal,
               ),
             },
             hostCheats: this.hostCheatsEnabled

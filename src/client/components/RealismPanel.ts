@@ -133,6 +133,7 @@ export class RealismPanel extends LitElement {
       realisticWorldApplies(
         gc.gameMap,
         gc.publicGameModifiers?.isRealisticWorld === true,
+        gc.gameMapSize,
       );
     this.style.display = visible ? "block" : "none";
     if (!visible) return html``;
