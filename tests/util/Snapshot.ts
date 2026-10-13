@@ -141,6 +141,7 @@ export const DERIVED_FIELDS = new Set<string>([
   "unitCountMemo",
   "unitsByTypeMemo",
   "borderNbuf",
+  "_techMultipliers", // rebuilt from _techRanks on demand
   // PlayerImpl
   "lastSentUpdate",
   "myUnitsMemo",

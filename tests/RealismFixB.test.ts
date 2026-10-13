@@ -39,7 +39,7 @@ function firstLandTile(game: Game, skip = 0): number {
   return found;
 }
 
-describe("passage exclaves are not re-conquered (PlayerExecution)", () => {
+describe("direct attacks keep accumulating while PlayerExecution runs (realistic vs classic)", () => {
   async function run(realistic: boolean) {
     const game = await setup(
       "big_plains",
@@ -48,13 +48,14 @@ describe("passage exclaves are not re-conquered (PlayerExecution)", () => {
     const a = human(game, "A");
     const b = human(game, "B");
     const t = human(game, "T");
+    // A | T | B bands: A borders T directly; B is allied to A on the far side.
     game.map().forEachTile((tile) => {
       if (!game.map().isLand(tile) || game.map().isImpassable(tile)) return;
       const x = game.x(tile);
       const w = game.width();
       if (x < w / 3) a.conquer(tile);
-      else if (x < (2 * w) / 3) b.conquer(tile);
-      else t.conquer(tile);
+      else if (x < (2 * w) / 3) t.conquer(tile);
+      else b.conquer(tile);
     });
     game.addExecution(new AllianceRequestExecution(a, b.id()));
     game.executeNextTick();
@@ -73,8 +74,11 @@ describe("passage exclaves are not re-conquered (PlayerExecution)", () => {
     return a.numTilesOwned() - aInitial;
   }
 
-  test("realistic: the attacker's gain accumulates", async () => {
-    expect(await run(true)).toBeGreaterThan(100);
+  test("realistic: the attacker's gain accumulates like classic", async () => {
+    const realisticGain = await run(true);
+    const classicGain = await run(false);
+    expect(classicGain).toBeGreaterThan(100);
+    expect(realisticGain).toBeGreaterThan(100);
   });
 });
 

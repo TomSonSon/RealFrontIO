@@ -1237,6 +1237,16 @@ export class UserSettingModal extends BaseModal {
       ></setting-keybind>
 
       <setting-keybind
+        action="toggleTechTree"
+        label=${translateText("user_setting.toggle_tech_tree")}
+        description=${translateText("user_setting.toggle_tech_tree_desc")}
+        defaultKey=${this.defaultKeybinds.toggleTechTree}
+        .value=${this.getKeyValue("toggleTechTree")}
+        .display=${this.getKeyChar("toggleTechTree")}
+        @change=${this.handleKeybindChange}
+      ></setting-keybind>
+
+      <setting-keybind
         action="altKey"
         label=${translateText("user_setting.graphics_refresh_modifier")}
         description=${translateText(

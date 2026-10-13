@@ -73,12 +73,6 @@ export class AttackExecution implements Execution {
   // Reusable neighbor buffers to avoid closures/allocation in hot loops.
   private nbuf: TileRef[] = [0, 0, 0, 0];
   private nbuf2: TileRef[] = [0, 0, 0, 0];
-  // Realistic-World right-of-passage: smallIDs of the attacker + everyone
-  // reachable through a chain of alliances. Derived from live alliances at the
-  // start of every tick (never snapshotted); used by the tick loop to let a
-  // target tile that only borders an allied (passage) tile be conquered,
-  // without ever taking the ally's own tile.
-  private friendlyGroundIDs: Set<number> = new Set();
 
   constructor(
     private startTroops: number | null = null,
@@ -256,56 +250,8 @@ export class AttackExecution implements Execution {
 
     this.toConquer.clear();
     this.attack.clearBorder();
-
-    if (!this.mg.config().isRealisticWorld()) {
-      // forEach over the dense storage - the values() generator showed up in
-      // long-game profiles.
-      this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
-      return;
-    }
-
-    // Multi-hop right-of-passage (Realistic World): seed the frontier from
-    // every tile owned by the attacker OR a transitively-allied player, so the
-    // attack can push into a target through a CHAIN of allies - using allied
-    // territory as a springboard with NO ownership change (only target tiles
-    // are ever conquered; addNeighbors adds only target-owned neighbours and
-    // the tick loop only conquers target tiles).
-    for (const p of this.updateFriendlyGround()) {
-      p.borderTiles().forEach((tile) => this.addNeighbors(tile));
-    }
-  }
-
-  /** Rebuilds friendlyGroundIDs from the current alliances; returns the players. */
-  private updateFriendlyGround(): Player[] {
-    const ground = this.friendlyGroundPlayers();
-    this.friendlyGroundIDs = new Set<number>(ground.map((p) => p.smallID()));
-    return ground;
-  }
-
-  /**
-   * The attacker plus everybody reachable through a chain of alliances (the
-   * attacker's allies, their allies, ...) - the "friendly ground" an attack
-   * may spring from under right-of-passage.
-   */
-  private friendlyGroundPlayers(): Player[] {
-    const ground: Player[] = [this._owner];
-    // Passage only exists to reach a player; wilderness is taken from own land.
-    if (!this.target.isPlayer()) return ground;
-    const seen = new Set<Player>([this._owner]);
-    const queue: Player[] = [this._owner];
-    while (queue.length > 0) {
-      const p = queue.pop()!;
-      for (const ally of p.allies()) {
-        if (ally === this._owner || ally.smallID() === this.targetSmallID) {
-          continue;
-        }
-        if (seen.has(ally)) continue;
-        seen.add(ally);
-        ground.push(ally);
-        queue.push(ally);
-      }
-    }
-    return ground;
+    // forEach over the dense storage — the values() generator showed up in long-game profiles
+    this._owner.borderTiles().forEach((tile) => this.addNeighbors(tile));
   }
 
   private retreat(malusPercent = 0) {
@@ -375,10 +321,6 @@ export class AttackExecution implements Execution {
       return;
     }
 
-    if (this.mg.config().isRealisticWorld()) {
-      this.updateFriendlyGround();
-    }
-
     const borderSize = this.attack.borderSize() + this.random.nextInt(0, 5);
     // Each tile consumes a fraction of the tick; conquer until it is spent.
     let tickBudget = 1;
@@ -402,20 +344,7 @@ export class AttackExecution implements Execution {
       let onBorder = false;
       const numNeighbors = this.map.neighbors4(tileToConquer, this.nbuf);
       for (let i = 0; i < numNeighbors; i++) {
-        const oid = this.map.ownerID(this.nbuf[i]);
-        if (oid === this.ownerSmallID) {
-          onBorder = true;
-          break;
-        }
-        // Right-of-passage (Realistic World): an allied (transitively-friendly)
-        // neighbour counts as launchable ground, so the attack can conquer a
-        // target tile that only borders an ally (never the ally's own tile).
-        if (
-          this.mg.config().isRealisticWorld() &&
-          oid !== 0 &&
-          oid !== this.targetSmallID &&
-          this.friendlyGroundIDs.has(oid)
-        ) {
+        if (this.map.ownerID(this.nbuf[i]) === this.ownerSmallID) {
           onBorder = true;
           break;
         }
@@ -654,8 +583,6 @@ export class AttackExecution implements Execution {
     // Scratch buffers, overwritten before every read.
     this.nbuf = [0, 0, 0, 0];
     this.nbuf2 = [0, 0, 0, 0];
-    // Rebuilt at the start of the next tick.
-    this.friendlyGroundIDs = new Set();
     this.startTroops = s.startTroops;
     this._owner = r.player(s.owner);
     this._targetID = s.targetID;

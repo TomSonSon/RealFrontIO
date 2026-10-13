@@ -261,19 +261,20 @@ describe("attack focus tile gating", () => {
   });
 });
 
-describe("realism passage attack across a snapshot", () => {
+describe("realism attack across a snapshot", () => {
   test("a restored mid-attack game matches the live one", async () => {
     const game = await setup("big_plains", REALISM);
     const a = addPlayer(game, "A");
     const b = addPlayer(game, "B");
     const t = addPlayer(game, "T");
+    // A | T | B: A borders T directly.
     game.map().forEachTile((tile) => {
       if (!game.map().isLand(tile) || game.map().isImpassable(tile)) return;
       const x = game.x(tile);
       const w = game.width();
       if (x < w / 3) a.conquer(tile);
-      else if (x < (2 * w) / 3) b.conquer(tile);
-      else t.conquer(tile);
+      else if (x < (2 * w) / 3) t.conquer(tile);
+      else b.conquer(tile);
     });
     ally(game, a, b);
     a.setTroops(200_000);

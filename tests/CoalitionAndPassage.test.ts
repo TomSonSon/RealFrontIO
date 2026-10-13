@@ -13,7 +13,8 @@ import { Game, Player } from "@openfront/engine/game/Game";
 import { setup } from "./util/Setup";
 
 /**
- * section 8.6 coalition bot voting (research/10) and section 8.7 right-of-passage.
+ * section 8.6 coalition bot voting (research/10) and section 8.7 (attacks are
+ * contiguous from the attacker's own border; no implicit right of passage).
  */
 
 describe("coalition war declarations - how bots vote (8.6)", () => {
@@ -62,8 +63,8 @@ describe("coalition war declarations - how bots vote (8.6)", () => {
   });
 });
 
-describe("right-of-passage through allies (8.7) - no ownership change", () => {
-  test("an attacker can push into a target through an ally's territory without taking the ally's tiles", async () => {
+describe("no implicit right of passage through allies (8.7)", () => {
+  test("an ally bordering the target does not open a route: the attacker gains no target tiles", async () => {
     const game = await setup("big_plains", {
       gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
@@ -90,6 +91,7 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
     });
     const bInitial = b.numTilesOwned();
     const aInitial = a.numTilesOwned();
+    const tInitial = t.numTilesOwned();
 
     // Real alliance between A and B.
     game.addExecution(new AllianceRequestExecution(a, b.id()));
@@ -101,7 +103,7 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
     a.setTroops(200_000);
     t.setTroops(200_000);
 
-    // A attacks T through its ally B (no focus).
+    // A attacks T; A's only border is with B, which borders T.
     game.addExecution(
       new AttackExecution(undefined, a, t.id(), null, true, null),
     );
@@ -109,9 +111,9 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
       game.executeNextTick();
     }
 
-    // A conquered some of T's territory ...
-    expect(a.numTilesOwned()).toBeGreaterThan(aInitial);
-    // ... and B's tiles were never touched (no ownership change).
+    // A never reaches T: the attack starts from A's own border only.
+    expect(a.numTilesOwned()).toBe(aInitial);
+    expect(t.numTilesOwned()).toBe(tInitial);
     expect(b.numTilesOwned()).toBe(bInitial);
   });
 
@@ -146,11 +148,11 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
     for (let i = 0; i < 120 && t.isAlive(); i++) {
       game.executeNextTick();
     }
-    // A and B are NOT allied, so A has no passage through B: it cannot reach T.
+    // A and B are NOT allied, and A does not border T: it cannot reach T.
     expect(a.numTilesOwned()).toBe(aInitial);
   });
 
-  test("multi-hop: an attacker can push into a target through a CHAIN of allies", async () => {
+  test("a chain of allies does not open a route: the attacker gains no target tiles", async () => {
     const game = await setup("big_plains", {
       gameMap: GameMapType.World,
       publicGameModifiers: { isRealisticWorld: true },
@@ -181,6 +183,7 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
     const bInitial = b.numTilesOwned();
     const cInitial = c.numTilesOwned();
     const aInitial = a.numTilesOwned();
+    const tInitial = t.numTilesOwned();
 
     // Alliances A-B and B-C form a chain A -> B -> C.
     for (const [x, y] of [
@@ -204,9 +207,9 @@ describe("right-of-passage through allies (8.7) - no ownership change", () => {
       game.executeNextTick();
     }
 
-    // A reached T through the whole chain ...
-    expect(a.numTilesOwned()).toBeGreaterThan(aInitial);
-    // ... and neither B nor C lost a tile (no ownership change).
+    // A has no border with T or C, so the attack never leaves A's own land.
+    expect(a.numTilesOwned()).toBe(aInitial);
+    expect(t.numTilesOwned()).toBe(tInitial);
     expect(b.numTilesOwned()).toBe(bInitial);
     expect(c.numTilesOwned()).toBe(cInitial);
   });

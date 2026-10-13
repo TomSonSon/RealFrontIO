@@ -25,7 +25,7 @@
 9. [Sanctions & coalition pressure](#9-sanctions--coalition-pressure)
 10. [Reputation & betrayal](#10-reputation--betrayal)
 11. [Coalition war declarations](#11-coalition-war-declarations)
-12. [Right of passage (single- & multi-hop)](#12-right-of-passage)
+12. [Attacks are contiguous (no implicit passage)](#12-attacks-are-contiguous-no-implicit-right-of-passage)
 13. [Chokepoint toll & interdiction](#13-chokepoint-toll--interdiction)
 14. [Per-game skill / tech tree](#14-per-game-skill--tech-tree)
 15. [Client UI wiring](#15-client-ui-wiring)
@@ -197,7 +197,7 @@ Weightings (constants in `AttackExecution.ts`):
 - Speed cost interpolates linearly from `FOCUS_SPEED_MIN` at `distance ≤ FOCUS_RADIUS` to
   `FOCUS_SPEED_MAX` at `distance ≥ FOCUS_RADIUS * 2`.
 - **Interaction with §12:** even with a focus, the attack can only push through tiles it can
-  legally reach (own or allied "passage" ground).
+  legally reach (ground bordering the attacker's own land).
 
 ---
 
@@ -317,26 +317,24 @@ pure function of relations/troops/difficulty, hence bit-identical everywhere.
 
 ---
 
-## 12. Right of passage (single- & multi-hop)
+## 12. Attacks are contiguous (no implicit right of passage)
 
-**File:** `AttackExecution.ts` (realism-gated rewrite of `refreshToConquer` + the tick border check).
+**File:** `AttackExecution.ts`. Realism attacks seed and check borders exactly like classic mode.
 
-In Realism mode an attack can use **allied territory as a springboard** without changing who owns
-it. Critically:
+Right of passage is **not implicit**. An attack starts only from the attacker's own border and
+conquers only target tiles that are adjacent to that frontier. So:
 
-- **No ownership change** — only the target's tiles are ever conquered; allied (passage) and
-  transitively-allied tiles are never taken.
-- **Multi-hop:** the friendly "ground" is the **transitive closure** of alliances — the attacker,
-  plus everyone reachable through a *chain* of allies (`friendlyGroundPlayers`). So A can push
-  into target T even when only C (a friend of B, a friend of A) borders T, i.e. A → B → C → T.
-- The tick loop treats a neighbouring tile as launchable if its owner's `smallID` is in the
-  recomputed friendly-ground set, so a target tile that only borders a far ally can still be
-  taken.
-- `friendlyGroundIDs` is recomputed on each conquest refresh (and reset on snapshot restore),
-  keeping snapshot round-trips bit-identical.
+- An attack never launches from an ally's border, and never jumps across a third country or into
+  a disconnected part of the target.
+- An ally that borders the target does not open a route. The attacker gains no target tiles
+  unless it borders the target itself.
+- Attacked land stays one connected piece with the attacker's original land.
+
+A future explicit diplomatic grant (the `passage` design in `10-economics-and-diplomacy.md` section 8.7)
+is the intended way to route through allied land. It is not implemented.
 
 - **Interaction with §7 (§focus):** the focus only biases *which* reachable tiles are taken first;
-  passage decides *whether* they're reachable at all.
+  borders decide *whether* they're reachable at all.
 
 ---
 
@@ -495,7 +493,8 @@ Every system ships with focused tests, plus the full engine suite stays green:
 - `tests/RealisticWorld.test.ts` — strength seeds, relations, capital, terrain.
 - `tests/EconomyAndDiplomacy.test.ts` — trade tiers, sanctions, reputation.
 - `tests/FocusedAttack.test.ts` — focus weighting.
-- `tests/CoalitionAndPassage.test.ts` — bot votes, single- & **multi-hop** passage, declaration.
+- `tests/CoalitionAndPassage.test.ts` - bot votes, no implicit passage through allies, declaration.
+- `tests/RealismContiguousAttack.test.ts` - attacks stay contiguous from the attacker's own border.
 - `tests/client/RealisticWorldModifierBadge.test.ts` + `tests/client/CoalitionDeclaration.test.ts` — client wiring.
 - `tests/ChokepointToll.test.ts` — control/tie-break, one-toll-per-voyage, exemption, interdiction, classic no-op.
 - `tests/TechTree.test.ts` — costs, preqs, cap, multiplier math, nation policy, snapshot round-trip.
@@ -515,7 +514,7 @@ Every system ships with focused tests, plus the full engine suite stays green:
 - ✅ Region/front-focused (focus) attacks
 - ✅ Relation-scaled trade, sanctions, per-game reputation/betrayal
 - ✅ Coalition war declarations (bot votes + auto-sanction + client UI)
-- ✅ Right of passage (multi-hop, no ownership change)
+- ✅ Attacks are contiguous from the attacker's own border (no implicit passage)
 - ✅ Chokepoint data pass + toll/interdiction mechanic
 - ✅ Per-game skill/tech tree (Military + Economy)
 

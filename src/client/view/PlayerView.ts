@@ -48,6 +48,9 @@ export class PlayerView implements PlayerLike {
   private decoder?: PatternDecoder;
 
   private _techRanks: string[] = [];
+  private _reputation = 0;
+  private _embargoSenders = 0;
+  private _allianceBlocked = false;
   /** Long-lived renderer state — mutated in place by applyUpdate(). */
   public state: PlayerState;
   /** Static header data — set once at construction, never mutated. */
@@ -80,6 +83,9 @@ export class PlayerView implements PlayerLike {
   ) {
     this.state = playerStateFromUpdate(data);
     this._techRanks = data.techRanks?.slice() ?? [];
+    this._reputation = data.reputation ?? 0;
+    this._embargoSenders = data.embargoSenders ?? 0;
+    this._allianceBlocked = data.allianceBlocked ?? false;
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -218,6 +224,13 @@ export class PlayerView implements PlayerLike {
   applyUpdate(pu: PlayerUpdate): void {
     applyStateUpdate(this.state, pu);
     if (pu.techRanks !== undefined) this._techRanks = pu.techRanks.slice();
+    if (pu.reputation !== undefined) this._reputation = pu.reputation;
+    if (pu.embargoSenders !== undefined) {
+      this._embargoSenders = pu.embargoSenders;
+    }
+    if (pu.allianceBlocked !== undefined) {
+      this._allianceBlocked = pu.allianceBlocked;
+    }
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
     if (!userSettings.emojis()) {
@@ -454,6 +467,18 @@ export class PlayerView implements PlayerLike {
   /** Owned tech-tree node ids (Realistic World); empty when none. */
   techRanks(): string[] {
     return this._techRanks;
+  }
+  /** Betrayal reputation (Realistic World); 0 when absent. */
+  reputation(): number {
+    return this._reputation;
+  }
+  /** Players holding a permanent embargo against this one (Realistic World); 0 when absent. */
+  embargoSenders(): number {
+    return this._embargoSenders;
+  }
+  /** True while barred from forming alliances by reputation (Realistic World). */
+  allianceBlocked(): boolean {
+    return this._allianceBlocked;
   }
   gold(): Gold {
     // Engine Gold is bigint; renderer state stores number. Convert back at the

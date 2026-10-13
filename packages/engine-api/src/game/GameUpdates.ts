@@ -288,6 +288,12 @@ export interface PlayerUpdate {
   isLobbyCreator?: boolean;
   /** Owned tech-tree node ids (Realistic World); omitted when none. */
   techRanks?: string[];
+  /** Realistic World only: betrayal reputation (<= 0). */
+  reputation?: number;
+  /** Realistic World only: players holding a permanent embargo against this one. */
+  embargoSenders?: number;
+  /** Realistic World only: true while barred from forming alliances. */
+  allianceBlocked?: boolean;
 }
 
 export interface AllianceView {

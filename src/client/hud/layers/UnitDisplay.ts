@@ -5,14 +5,21 @@ import {
   PlayerBuildableUnitType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import {
+  canPurchaseTech,
+  TECH_NODES,
+} from "@openfront/engine-api/resources/TechNodes";
 import { renderNumber } from "@openfront/engine-lib/Format";
 import { EventBus } from "@openfront/shared/EventBus";
 import { html, LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
+import { ToggleTechTreeEvent } from "../../components/TechTreePanel";
 import { Controller } from "../../Controller";
 import { ToggleStructureEvent } from "../../InputHandler";
+import { Platform } from "../../Platform";
 import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
+import { realisticWorldActive } from "../../utilities/RealisticWorldToggle";
 import { translateText } from "../../Utils";
 import { GameView } from "../../view";
 import {
@@ -47,6 +54,8 @@ export class UnitDisplay extends LitElement implements Controller {
   private allDisabled = false;
   private _hoveredUnit: PlayerBuildableUnitType | null = null;
   private tutorialHighlight: PlayerBuildableUnitType | null = null;
+  private techHotkey = "KeyH";
+  private techAffordable = false;
 
   createRenderRoot() {
     return this;
@@ -57,6 +66,7 @@ export class UnitDisplay extends LitElement implements Controller {
     const userSettings = new UserSettings();
 
     this.keybinds = userSettings.parsedUserKeybinds();
+    this.techHotkey = userSettings.keybinds(Platform.isMac).toggleTechTree;
 
     this.allDisabled = BuildMenus.types.every((u) => config.isUnitDisabled(u));
 
@@ -124,6 +134,12 @@ export class UnitDisplay extends LitElement implements Controller {
     this._samLauncher = player.totalUnitLevels(UnitType.SAMLauncher);
     this._factories = player.totalUnitLevels(UnitType.Factory);
     this._warships = player.totalUnitLevels(UnitType.Warship);
+    const owned = player.techRanks();
+    const gold = player.gold();
+    this.techAffordable =
+      realisticWorldActive(this.game) &&
+      !this.game.isSpectator() &&
+      TECH_NODES.some((n) => canPurchaseTech(n.id, owned, gold));
     this.requestUpdate();
   }
 
@@ -214,7 +230,49 @@ export class UnitDisplay extends LitElement implements Controller {
             "mirv",
             this.keybinds["buildMIRV"]?.key ?? "0",
           )}
+          ${this.renderTechButton()}
         </div>
+      </div>
+    `;
+  }
+
+  private renderTechButton() {
+    if (!this.game || !realisticWorldActive(this.game)) return null;
+    const hotkey = this.techHotkey
+      .replace("Digit", "")
+      .replace("Key", "")
+      .toUpperCase();
+    return html`
+      <div class="flex flex-col items-center relative">
+        <button
+          type="button"
+          class="relative border border-slate-500 rounded-sm px-0.5 pb-0.5 flex items-center gap-0.5 cursor-pointer hover:bg-gray-800 text-white"
+          title=${translateText("tech_tree.button_tooltip", { key: hotkey })}
+          aria-label=${translateText("tech_tree.title")}
+          @click=${() => this.eventBus.emit(new ToggleTechTreeEvent())}
+        >
+          <div class="ml-0.5 text-[10px] relative -top-1 text-gray-400">
+            ${hotkey}
+          </div>
+          <svg
+            viewBox="0 0 24 24"
+            class="size-5 pt-0.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          >
+            <circle cx="12" cy="5" r="2.5" />
+            <circle cx="6" cy="19" r="2.5" />
+            <circle cx="18" cy="19" r="2.5" />
+            <path d="M12 7.5v4M12 11.5l-4.5 5M12 11.5l4.5 5" />
+          </svg>
+          ${this.techAffordable
+            ? html`<span
+                class="absolute -top-1 -right-1 size-2 rounded-full bg-sky-400"
+              ></span>`
+            : null}
+        </button>
       </div>
     `;
   }

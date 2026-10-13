@@ -362,6 +362,7 @@ The **US dollar** is the world's dominant reserve and trade currency; dollar-den
 ## 8.7 (g) **Right-of-passage / basing mechanic**
 
 - **Status:** needs-design (interacts with ownership) • **V/E:** ★★★★★ (fills the note's biggest gap, real architecture)
+- **(engine note)** Attacks no longer route through allied land implicitly. The earlier multi-hop passage was removed; an explicit grant below is the only intended route.
 - **(fact)** Militaries need transit/overflight/basing agreements; US basing (~750 sites in ~80 countries) is the engine of power projection; basing/transit is separate from alliance (can grant to cobelligerents) and costs the host; basing = power projection [CRS R48123; overseasbases.net; Wikipedia]. Iran/Russia/China project through host states.
 - **(map)** Introduce a **`passage` diplomatic grant** (separate from alliance):
   - **Grant types:** `TRANSIT` (one-way movement/attack *through* a nation's territory to targets beyond) and `BASE` (a forward staging point granting extended reach / local regeneration boost).
