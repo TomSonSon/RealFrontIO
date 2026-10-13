@@ -87,7 +87,6 @@ const SPECIAL_MODIFIER_POOL: ModifierKey[] = [
   ...Array<ModifierKey>(4).fill("isCompact"),
   ...Array<ModifierKey>(2).fill("isCrowded"),
   ...Array<ModifierKey>(1).fill("isHardNations"),
-  ...Array<ModifierKey>(2).fill("isRealisticWorld"),
   ...Array<ModifierKey>(2).fill("startingGold1M"),
   ...Array<ModifierKey>(4).fill("startingGold5M"),
   ...Array<ModifierKey>(3).fill("startingGold25M"),

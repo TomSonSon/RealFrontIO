@@ -153,6 +153,64 @@ const ENABLES_ICON = svg`<path
   clip-rule="evenodd"
 />`;
 
+const REAL_WORLD_ICON = svg`<circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9s1.2-6.5 3.6-9z" />`;
+
+function renderRealWorldCard(
+  enabled: boolean,
+  onToggle: () => void,
+): TemplateResult {
+  return html`
+    <button
+      type="button"
+      role="switch"
+      aria-checked=${enabled}
+      class="${cardClass(enabled, "p-5 text-left flex items-center gap-5")}"
+      @click=${onToggle}
+    >
+      <span
+        class="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center ${enabled
+          ? "bg-malibu-blue/30 text-white"
+          : "bg-white/10 text-white/60"}"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          class="w-7 h-7"
+        >
+          ${REAL_WORLD_ICON}
+        </svg>
+      </span>
+      <span class="flex-1 min-w-0 space-y-1">
+        <span
+          class="block text-sm font-bold uppercase tracking-wider ${stateTextClass(
+            enabled,
+          )}"
+        >
+          ${translateText("real_world_mode.title")}
+        </span>
+        <span class="block text-sm leading-snug text-white/60">
+          ${translateText("real_world_mode.description")}
+        </span>
+      </span>
+      <span
+        class="shrink-0 relative w-11 h-6 rounded-full transition-colors duration-200 ${enabled
+          ? "bg-malibu-blue"
+          : "bg-white/20"}"
+        aria-hidden="true"
+      >
+        <span
+          class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 ${enabled
+            ? "translate-x-5"
+            : ""}"
+        ></span>
+      </span>
+    </button>
+  `;
+}
+
 function renderSectionHeader(
   iconSvg: SVGTemplateResult,
   colorClass: string,
@@ -191,6 +249,11 @@ export interface ToggleOptionConfig {
 }
 
 export interface GameConfigSettingsData {
+  // When set, the Realistic World card is shown at the top. While enabled the
+  // map, mode, team, bots and nations controls are locked or hidden.
+  realWorldMode?: {
+    enabled: boolean;
+  };
   map: {
     selected: GameMapType;
     useRandom: boolean;
@@ -315,6 +378,12 @@ export class GameConfigSettings extends LitElement {
     });
   };
 
+  private handleRealWorldModeToggle = () => {
+    this.emit("real-world-mode-toggled", {
+      enabled: !this.settings?.realWorldMode?.enabled,
+    });
+  };
+
   private handleUnitToggle = (unit: UnitType, checked: boolean) => {
     this.emit("unit-toggle-changed", { unit, checked });
   };
@@ -431,26 +500,37 @@ export class GameConfigSettings extends LitElement {
   render() {
     if (!this.settings) return nothing;
     const settings = this.settings;
+    const realWorld = settings.realWorldMode?.enabled === true;
 
     return html`
       <div class=${this.sectionGapClass}>
+        ${settings.realWorldMode
+          ? renderRealWorldCard(realWorld, this.handleRealWorldModeToggle)
+          : nothing}
         ${renderSection(
           MAP_ICON,
           "text-aquarius",
           "bg-malibu-blue/20",
           "map.map",
-          html`<map-picker
-            .selectedMap=${settings.map.selected}
-            .useRandomMap=${settings.map.useRandom}
-            .randomMapDivider=${settings.map.randomMapDivider ?? false}
-            .showMedals=${settings.map.showMedals ?? false}
-            .mapWins=${settings.map.mapWins ?? new Map()}
-            .onSelectMap=${this.handleSelectMap}
-            .onSelectRandom=${this.handleSelectRandom}
-            .searchQuery=${this.mapSearchQuery}
-          ></map-picker>`,
+          html`<div ?inert=${realWorld} class=${realWorld ? "opacity-50" : ""}>
+              <map-picker
+                .selectedMap=${settings.map.selected}
+                .useRandomMap=${settings.map.useRandom}
+                .randomMapDivider=${settings.map.randomMapDivider ?? false}
+                .showMedals=${settings.map.showMedals ?? false}
+                .mapWins=${settings.map.mapWins ?? new Map()}
+                .onSelectMap=${this.handleSelectMap}
+                .onSelectRandom=${this.handleSelectRandom}
+                .searchQuery=${this.mapSearchQuery}
+              ></map-picker>
+            </div>
+            ${realWorld
+              ? html`<p class="text-xs text-white/60">
+                  ${translateText("real_world_mode.map_locked")}
+                </p>`
+              : nothing}`,
           undefined,
-          this.renderMapSearchInput(),
+          realWorld ? undefined : this.renderMapSearchInput(),
         )}
         ${renderSection(
           DIFFICULTY_ICON,
@@ -498,34 +578,36 @@ export class GameConfigSettings extends LitElement {
             </div>
           `,
         )}
-        ${renderSection(
-          MODE_ICON,
-          "text-purple-400",
-          "bg-purple-500/20",
-          "host_modal.mode",
-          html`
-            <div class="grid grid-cols-2 gap-4">
-              ${[GameMode.FFA, GameMode.Team].map((mode) => {
-                const isSelected = settings.gameMode.selected === mode;
-                return html`
-                  <button
-                    class="${cardClass(isSelected, "py-6 text-center")}"
-                    @click=${() => this.handleGameModeSelect(mode)}
-                  >
-                    <span
-                      class="text-sm font-bold text-white uppercase tracking-widest"
-                    >
-                      ${mode === GameMode.FFA
-                        ? translateText("game_mode.ffa")
-                        : translateText("game_mode.teams")}
-                    </span>
-                  </button>
-                `;
-              })}
-            </div>
-          `,
-        )}
-        ${settings.gameMode.selected === GameMode.FFA
+        ${realWorld
+          ? nothing
+          : renderSection(
+              MODE_ICON,
+              "text-purple-400",
+              "bg-purple-500/20",
+              "host_modal.mode",
+              html`
+                <div class="grid grid-cols-2 gap-4">
+                  ${[GameMode.FFA, GameMode.Team].map((mode) => {
+                    const isSelected = settings.gameMode.selected === mode;
+                    return html`
+                      <button
+                        class="${cardClass(isSelected, "py-6 text-center")}"
+                        @click=${() => this.handleGameModeSelect(mode)}
+                      >
+                        <span
+                          class="text-sm font-bold text-white uppercase tracking-widest"
+                        >
+                          ${mode === GameMode.FFA
+                            ? translateText("game_mode.ffa")
+                            : translateText("game_mode.teams")}
+                        </span>
+                      </button>
+                    `;
+                  })}
+                </div>
+              `,
+            )}
+        ${realWorld || settings.gameMode.selected === GameMode.FFA
           ? nothing
           : html`
               <section class="space-y-6">
@@ -565,24 +647,27 @@ export class GameConfigSettings extends LitElement {
           settings.options.titleKey,
           html`
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div
-                class="col-span-2 rounded-xl p-4 flex flex-col justify-center border transition-all duration-200 ${settings
-                  .options.bots.value > 0
-                  ? ACTIVE_CARD
-                  : INACTIVE_CARD}"
-              >
-                <fluent-slider
-                  min="0"
-                  max="400"
-                  step="1"
-                  .value=${settings.options.bots.value}
-                  labelKey=${settings.options.bots.labelKey}
-                  disabledKey=${settings.options.bots.disabledKey}
-                  @value-changed=${this.handleBotsChanged}
-                ></fluent-slider>
-              </div>
-
-              ${settings.options.nations && !settings.options.nations.hidden
+              ${realWorld
+                ? nothing
+                : html`<div
+                    class="col-span-2 rounded-xl p-4 flex flex-col justify-center border transition-all duration-200 ${settings
+                      .options.bots.value > 0
+                      ? ACTIVE_CARD
+                      : INACTIVE_CARD}"
+                  >
+                    <fluent-slider
+                      min="0"
+                      max="400"
+                      step="1"
+                      .value=${settings.options.bots.value}
+                      labelKey=${settings.options.bots.labelKey}
+                      disabledKey=${settings.options.bots.disabledKey}
+                      @value-changed=${this.handleBotsChanged}
+                    ></fluent-slider>
+                  </div>`}
+              ${settings.options.nations &&
+              !settings.options.nations.hidden &&
+              !realWorld
                 ? html`<div
                     class="col-span-2 rounded-xl p-4 flex flex-col justify-center border transition-all duration-200 ${settings
                       .options.nations.value > 0

@@ -35,7 +35,7 @@ export function notableLobbySettings(
     });
   if (pm?.isRealisticWorld)
     items.push({
-      label: translateText("game_settings.realistic_world"),
+      label: translateText("real_world_mode.title"),
       value: enabled,
     });
   if (c.infiniteTroops)

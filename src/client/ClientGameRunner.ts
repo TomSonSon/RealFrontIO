@@ -33,6 +33,8 @@ import { GameMetrics } from "./GameMetrics";
 import { showInGameAlert } from "./InGameModal";
 import {
   AutoUpgradeEvent,
+  CloseViewEvent,
+  CountryPickEvent,
   DoBoatAttackEvent,
   DoBreakAllianceEvent,
   DoGroundAttackEvent,
@@ -96,6 +98,7 @@ import { ALL_UNIT_TYPES, UnitState } from "./render/types";
 import { audioMixer, initAudioMixer } from "./sound/AudioMixer";
 import { SoundManager } from "./sound/SoundManager";
 import { themeProvider } from "./theme/ThemeProvider";
+import { countryPickOwner } from "./utilities/CountryPick";
 import { GameView, PlayerView } from "./view";
 
 export interface LobbyConfig {
@@ -1233,6 +1236,18 @@ export class ClientGameRunner {
     }
     console.log(`clicked cell ${cell}`);
     const tile = this.gameView.ref(cell.x, cell.y);
+    if (
+      this.gameView.config().isRealBorders() &&
+      this.gameView.inSpawnPhase()
+    ) {
+      const owner = countryPickOwner(this.gameView, tile);
+      if (owner !== null) {
+        this.eventBus.emit(new CountryPickEvent(owner.smallID()));
+      } else {
+        this.eventBus.emit(new CloseViewEvent());
+      }
+      return;
+    }
     if (
       this.gameView.isLand(tile) &&
       !this.gameView.hasOwner(tile) &&

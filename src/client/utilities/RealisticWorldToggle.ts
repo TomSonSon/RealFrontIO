@@ -12,6 +12,15 @@ export function realisticWorldApplies(
   return enabled && map === GameMapType.World && size !== GameMapSize.Compact;
 }
 
+export function realisticWorldActive(game: GameView): boolean {
+  const gc = game.config().gameConfig();
+  return realisticWorldApplies(
+    gc.gameMap,
+    gc.publicGameModifiers?.isRealisticWorld === true,
+    gc.gameMapSize,
+  );
+}
+
 // The client Config lacks the engine-only troopRegen tech multiplier, so apply
 // it here. Mirrors the engine: only positive regen is scaled, and never past
 // the troop cap.

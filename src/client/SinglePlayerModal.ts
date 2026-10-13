@@ -209,6 +209,16 @@ export class SinglePlayerModal extends BaseModal {
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
   @state() private realisticWorld: boolean = DEFAULT_OPTIONS.realisticWorld;
+  // Settings the Realistic World card overrides, restored when it is switched off.
+  private realWorldSaved: {
+    selectedMap: GameMapType;
+    useRandomMap: boolean;
+    gameMode: GameMode;
+    compactMap: boolean;
+    randomSpawn: boolean;
+    bots: number;
+    nations: number;
+  } | null = null;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -499,6 +509,9 @@ export class SinglePlayerModal extends BaseModal {
             class="block"
             .sectionGapClass=${"space-y-6"}
             .settings=${{
+              realWorldMode: {
+                enabled: this.realisticWorld,
+              },
               map: {
                 selected: this.selectedMap,
                 useRandom: this.useRandomMap,
@@ -536,6 +549,7 @@ export class SinglePlayerModal extends BaseModal {
                   {
                     labelKey: "game_settings.random_spawn",
                     checked: this.randomSpawn,
+                    hidden: this.realisticWorld,
                   },
                   {
                     labelKey: "game_settings.infinite_gold",
@@ -548,16 +562,11 @@ export class SinglePlayerModal extends BaseModal {
                   {
                     labelKey: "game_settings.compact_map",
                     checked: this.compactMap,
+                    hidden: this.realisticWorld,
                   },
                   {
                     labelKey: "game_settings.water_nukes",
                     checked: this.waterNukes,
-                  },
-                  {
-                    labelKey: "game_settings.realistic_world",
-                    checked: this.realisticWorld,
-                    hidden:
-                      this.selectedMap !== GameMapType.World || this.compactMap,
                   },
                   {
                     labelKey: "game_settings.doomsday_clock",
@@ -582,6 +591,7 @@ export class SinglePlayerModal extends BaseModal {
             @bots-changed=${this.handleBotsChange}
             @nations-changed=${this.handleNationsChange}
             @option-toggle-changed=${this.handleConfigOptionToggleChanged}
+            @real-world-mode-toggled=${this.handleConfigRealWorldModeToggled}
             @unit-toggle-changed=${this.handleConfigUnitToggleChanged}
           ></game-config-settings>
         </div>
@@ -706,13 +716,20 @@ export class SinglePlayerModal extends BaseModal {
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
     this.realisticWorld = DEFAULT_OPTIONS.realisticWorld;
+    this.realWorldSaved = null;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
     this.overtimeStartMinutes = DEFAULT_OPTIONS.overtimeStartMinutes;
   }
 
-  protected onOpen(): void {
+  protected onOpen(args?: Record<string, unknown>): void {
+    // The URL router passes args back as strings, hence the String().
+    if (args && "realisticWorld" in args) {
+      const realistic = String(args.realisticWorld) === "true";
+      if (realistic && !this.realisticWorld) void this.enableRealWorldMode();
+      if (!realistic && this.realisticWorld) void this.disableRealWorldMode();
+    }
     void this.loadNationCount();
     // Spend the cosmetics round trip while the player is picking a map, not
     // after they commit. startGame() still resolves cosmetics properly; this
@@ -726,7 +743,6 @@ export class SinglePlayerModal extends BaseModal {
   private handleSelectRandomMap() {
     this.useRandomMap = true;
     this.selectedMap = getRandomMapType();
-    this.realisticWorld = false;
     void this.loadNationCount();
   }
 
@@ -736,7 +752,6 @@ export class SinglePlayerModal extends BaseModal {
 
   private handleMapSelection(value: GameMapType) {
     this.selectedMap = value;
-    this.realisticWorld = false;
     this.useRandomMap = false;
     void this.loadNationCount();
   }
@@ -772,13 +787,56 @@ export class SinglePlayerModal extends BaseModal {
 
   private handleCompactMapChange(val: boolean) {
     this.compactMap = val;
-    if (val) this.realisticWorld = false;
     this.bots = getBotsForCompactMap(this.bots, val);
     this.nations = getNationsForCompactMap(
       this.nations,
       this.defaultNationCount,
       val,
     );
+  }
+
+  private handleConfigRealWorldModeToggled = (e: Event) => {
+    const customEvent = e as CustomEvent<{ enabled: boolean }>;
+    if (customEvent.detail.enabled) {
+      void this.enableRealWorldMode();
+    } else {
+      void this.disableRealWorldMode();
+    }
+  };
+
+  private async enableRealWorldMode() {
+    this.realWorldSaved = {
+      selectedMap: this.selectedMap,
+      useRandomMap: this.useRandomMap,
+      gameMode: this.gameMode,
+      compactMap: this.compactMap,
+      randomSpawn: this.randomSpawn,
+      bots: this.bots,
+      nations: this.nations,
+    };
+    this.realisticWorld = true;
+    this.selectedMap = GameMapType.World;
+    this.useRandomMap = false;
+    this.gameMode = GameMode.FFA;
+    this.compactMap = false;
+    this.randomSpawn = false;
+    this.bots = DEFAULT_OPTIONS.bots;
+    await this.loadNationCount();
+  }
+
+  private async disableRealWorldMode() {
+    const saved = this.realWorldSaved;
+    this.realisticWorld = false;
+    this.realWorldSaved = null;
+    if (!saved) return;
+    this.selectedMap = saved.selectedMap;
+    this.useRandomMap = saved.useRandomMap;
+    this.gameMode = saved.gameMode;
+    this.compactMap = saved.compactMap;
+    this.randomSpawn = saved.randomSpawn;
+    this.bots = saved.bots;
+    await this.loadNationCount();
+    this.nations = saved.nations;
   }
 
   private handleConfigOptionToggleChanged = (e: Event) => {
@@ -806,9 +864,6 @@ export class SinglePlayerModal extends BaseModal {
         break;
       case "game_settings.water_nukes":
         this.waterNukes = checked;
-        break;
-      case "game_settings.realistic_world":
-        this.realisticWorld = checked;
         break;
       case "game_settings.doomsday_clock":
         this.doomsdayClock = checked;
