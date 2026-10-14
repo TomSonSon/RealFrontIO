@@ -64,6 +64,9 @@ export class UnitImpl implements Unit {
   // Nuke only
   private _deletionAt: number | null = null;
   private _samLauncherState: SamLauncherState | undefined;
+  // Placed free at game start (real borders). Kept when the unit changes owner,
+  // so a conquered starting structure does not raise the conqueror's prices.
+  private _seeded = false;
 
   constructor(
     private _type: UnitType,
@@ -539,6 +542,15 @@ export class UnitImpl implements Unit {
     return this._underConstruction;
   }
 
+  isSeeded(): boolean {
+    return this._seeded;
+  }
+
+  markSeeded(): void {
+    this._seeded = true;
+    this._owner._myUnitsVersion++; // unitsOwnedUnseeded() skips seeded units
+  }
+
   setUnderConstruction(underConstruction: boolean): void {
     if (this._underConstruction !== underConstruction) {
       this._underConstruction = underConstruction;
@@ -856,6 +868,7 @@ export class UnitImpl implements Unit {
             duration: this._samLauncherState.duration,
           }
         : null,
+      seeded: this._seeded,
     };
   }
 
@@ -906,12 +919,13 @@ export class UnitImpl implements Unit {
     this._samLauncherState = s.samLauncherState
       ? { ...s.samLauncherState }
       : undefined;
+    this._seeded = s.seeded;
   }
 }
 
 export const UnitSnapshot = snapshotType({
   name: "Unit",
-  version: 1,
+  version: 2,
   schema: z.object({
     id: zInt(),
     type: UnitTypeSchema,
@@ -968,6 +982,12 @@ export const UnitSnapshot = snapshotType({
         duration: zInt(),
       })
       .nullable(),
+    seeded: z.boolean(),
   }),
+  // v1 -> v2: units placed at game start (real borders) are flagged. Older
+  // units were all built by their owners, so none is seeded.
+  migrations: {
+    1: (d) => ({ ...d, seeded: false }),
+  },
 });
 export type UnitState = z.infer<typeof UnitSnapshot.schema>;

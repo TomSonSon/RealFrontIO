@@ -147,6 +147,7 @@ export const DERIVED_FIELDS = new Set<string>([
   "myUnitsMemo",
   "myUnitCountMemo",
   "myUnitsOwnedMemo",
+  "myUnitsOwnedUnseededMemo",
   "nearbyMemo",
   // SharedWaterCache
   "playerWater",
@@ -200,94 +201,113 @@ export function diffGraphs(
   const limit = opts.limit ?? 20;
   const diffs: string[] = [];
   const seen = new Map<object, object>();
+  // Explicit stack: the graph has chains thousands of objects long (rail
+  // stations, linked units), which overflow the call stack when recursed.
+  // Children are pushed reversed so the visit order is depth-first, in order.
+  type Pair = [unknown, unknown, string];
+  const stack: Pair[] = [[a, b, "game"]];
+  const pushAll = (pairs: Pair[]): void => {
+    for (let i = pairs.length - 1; i >= 0; i--) stack.push(pairs[i]);
+  };
 
-  const walk = (x: unknown, y: unknown, p: string): void => {
-    if (diffs.length >= limit) return;
-    if (typeof x === "function" || typeof y === "function") return;
+  while (stack.length > 0 && diffs.length < limit) {
+    const [x, y, p] = stack.pop()!;
+    if (typeof x === "function" || typeof y === "function") continue;
     if (typeof x !== "object" || x === null) {
       if (!Object.is(x, y)) {
         diffs.push(`${p}: ${String(x)} !== ${String(y)}`);
       }
-      return;
+      continue;
     }
     if (typeof y !== "object" || y === null) {
       diffs.push(`${p}: object vs ${String(y)}`);
-      return;
+      continue;
     }
     const mapped = seen.get(x);
     if (mapped !== undefined) {
       if (mapped !== y) diffs.push(`${p}: aliasing differs`);
-      return;
+      continue;
     }
     seen.set(x, y);
     if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) {
       diffs.push(
         `${p}: ${x.constructor?.name} vs ${(y as object).constructor?.name}`,
       );
-      return;
+      continue;
     }
-    if (OPAQUE_CLASSES.some((C) => x instanceof C)) return;
+    if (OPAQUE_CLASSES.some((C) => x instanceof C)) continue;
     if (x instanceof TileSet) {
-      walk([...x], [...(y as TileSet)], `${p}<TileSet>`);
-      return;
+      stack.push([[...x], [...(y as TileSet)], `${p}<TileSet>`]);
+      continue;
     }
     if (x instanceof FlatBinaryHeap) {
       // Slots past the live length hold stale entries that are never read.
-      walk(x.getState(), (y as FlatBinaryHeap).getState(), `${p}<Heap>`);
-      return;
+      stack.push([
+        x.getState(),
+        (y as FlatBinaryHeap).getState(),
+        `${p}<Heap>`,
+      ]);
+      continue;
     }
     if (ArrayBuffer.isView(x)) {
       const xa = x as unknown as ArrayLike<number>;
       const ya = y as unknown as ArrayLike<number>;
       if (xa.length !== ya.length) {
         diffs.push(`${p}: length ${xa.length} !== ${ya.length}`);
-        return;
+        continue;
       }
       for (let i = 0; i < xa.length; i++) {
         if (!Object.is(xa[i], ya[i])) {
           diffs.push(`${p}[${i}]: ${xa[i]} !== ${ya[i]}`);
-          return;
+          break;
         }
       }
-      return;
+      continue;
     }
     if (x instanceof Map) {
       const xe = [...x];
       const ye = [...(y as Map<unknown, unknown>)];
       if (xe.length !== ye.length) {
         diffs.push(`${p}: Map size ${xe.length} !== ${ye.length}`);
-        return;
+        continue;
       }
+      const pairs: Pair[] = [];
       xe.forEach(([k, v], i) => {
-        walk(k, ye[i][0], `${p}<key ${i}>`);
-        walk(v, ye[i][1], `${p}.get(${String(k)})`);
+        pairs.push([k, ye[i][0], `${p}<key ${i}>`]);
+        pairs.push([v, ye[i][1], `${p}.get(${String(k)})`]);
       });
-      return;
+      pushAll(pairs);
+      continue;
     }
     if (x instanceof Set) {
-      walk([...x], [...(y as Set<unknown>)], `${p}<Set>`);
-      return;
+      stack.push([[...x], [...(y as Set<unknown>)], `${p}<Set>`]);
+      continue;
     }
     if (Array.isArray(x)) {
       const ya = y as unknown[];
       if (x.length !== ya.length) {
         diffs.push(`${p}: length ${x.length} !== ${ya.length}`);
-        return;
+        continue;
       }
-      x.forEach((v, i) => walk(v, ya[i], `${p}[${i}]`));
-      return;
+      const pairs: Pair[] = [];
+      for (let i = 0; i < x.length; i++) {
+        pairs.push([x[i], ya[i], `${p}[${i}]`]);
+      }
+      pushAll(pairs);
+      continue;
     }
     const keys = new Set([...Object.keys(x), ...Object.keys(y as object)]);
+    const pairs: Pair[] = [];
     for (const k of keys) {
       if (ignore.has(k)) continue;
-      walk(
+      pairs.push([
         (x as Record<string, unknown>)[k],
         (y as Record<string, unknown>)[k],
         `${p}.${k}`,
-      );
+      ]);
     }
-  };
-  walk(a, b, "game");
+    pushAll(pairs);
+  }
   return diffs;
 }
 

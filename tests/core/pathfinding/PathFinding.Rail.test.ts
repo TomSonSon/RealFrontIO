@@ -32,5 +32,14 @@ describe("PathFinding.Rail", () => {
       expect(path![0]).toBe(from);
       expect(path![1]).toBe(to);
     });
+
+    it("gives up once the iteration limit is reached", () => {
+      const map = game.map();
+      const from = map.ref(0, 0);
+      const to = map.ref(8, 0);
+
+      expect(PathFinding.Rail(game).findPath(from, to)).not.toBeNull();
+      expect(PathFinding.Rail(game, 2).findPath(from, to)).toBeNull();
+    });
   });
 });
