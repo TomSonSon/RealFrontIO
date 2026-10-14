@@ -44,6 +44,7 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
+import { renderAllianceRemaining } from "../../utilities/AllianceExpiry";
 import { realisticWorldApplies } from "../../utilities/RealisticWorldToggle";
 import { renderDuration, showToast, translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
@@ -197,7 +198,7 @@ export class PlayerPanel extends LitElement implements Controller {
 
           if (remainingTicks > 0) {
             this.allianceExpirySeconds = remainingSeconds;
-            this.allianceExpiryText = renderDuration(remainingSeconds);
+            this.allianceExpiryText = renderAllianceRemaining(remainingSeconds);
           } else {
             this.allianceExpirySeconds = null;
             this.allianceExpiryText = null;
@@ -1039,7 +1040,7 @@ export class PlayerPanel extends LitElement implements Controller {
                           class="text-[11px] font-semibold leading-none tabular-nums ${this.getExpiryColorClass(
                             remainingSeconds,
                           )}"
-                          >${renderDuration(remainingSeconds)}</span
+                          >${renderAllianceRemaining(remainingSeconds)}</span
                         >`
                       : ""}
                   </li>`;

@@ -39,13 +39,19 @@ vi.mock("../../src/client/Utils", async (importOriginal) => ({
 }));
 
 describe("realistic world toggle", () => {
-  it("applies only on the World map", () => {
+  it("applies only on the World and RealisticWorld maps", () => {
     expect(realisticWorldApplies(GameMapType.World, true, undefined)).toBe(
       true,
     );
+    expect(
+      realisticWorldApplies(GameMapType.RealisticWorld, true, undefined),
+    ).toBe(true);
     expect(realisticWorldApplies(GameMapType.World, false, undefined)).toBe(
       false,
     );
+    expect(
+      realisticWorldApplies(GameMapType.RealisticWorld, false, undefined),
+    ).toBe(false);
     expect(realisticWorldApplies(GameMapType.Africa, true, undefined)).toBe(
       false,
     );

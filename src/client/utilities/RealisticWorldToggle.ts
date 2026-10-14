@@ -2,14 +2,18 @@ import { GameMapSize, GameMapType } from "@openfront/engine-api/game/GameTypes";
 import { computeMultipliers } from "@openfront/engine-api/resources/TechNodes";
 import type { GameView, PlayerView } from "../view";
 
-// Realism only takes effect on the Normal-size World map, so the toggle only
-// applies there.
+// Realism only takes effect on the real world maps (World for the legacy
+// modifier, RealisticWorld for real borders), never on Compact size.
 export function realisticWorldApplies(
   map: GameMapType,
   enabled: boolean,
   size: GameMapSize | undefined,
 ): boolean {
-  return enabled && map === GameMapType.World && size !== GameMapSize.Compact;
+  return (
+    enabled &&
+    (map === GameMapType.World || map === GameMapType.RealisticWorld) &&
+    size !== GameMapSize.Compact
+  );
 }
 
 export function realisticWorldActive(game: GameView): boolean {

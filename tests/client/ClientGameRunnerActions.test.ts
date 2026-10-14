@@ -110,6 +110,7 @@ function makeRunner(overrides: {
       isRandomSpawn: () => false,
       isRealBorders: () => overrides.realBorders ?? false,
       isReplay: () => false,
+      mapScale: () => (overrides.realBorders ? 2.5 : 1),
     }),
     inSpawnPhase: () => overrides.inSpawnPhase ?? false,
     myPlayer: () => null,
@@ -294,6 +295,25 @@ describe("auto boat", () => {
     await flushPromises();
 
     expect(boats).toHaveLength(0);
+  });
+
+  it("auto-boat distance limit scales with the map in real borders", async () => {
+    const boatsAt = async (distance: number) => {
+      const { eventBus } = makeRunner({
+        realBorders: true,
+        hasOwner: true,
+        actions: boatActions,
+        boatDistSquared: distance * distance,
+      });
+      const boats: SendBoatAttackIntentEvent[] = [];
+      eventBus.on(SendBoatAttackIntentEvent, (e) => boats.push(e));
+      eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y));
+      await flushPromises();
+      return boats.length;
+    };
+
+    expect(await boatsAt(249)).toBe(1);
+    expect(await boatsAt(250)).toBe(0);
   });
 });
 

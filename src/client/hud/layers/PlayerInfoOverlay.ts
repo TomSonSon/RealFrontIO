@@ -26,6 +26,7 @@ import { Platform } from "../../Platform";
 import { themeProvider } from "../../theme/ThemeProvider";
 import { TransformHandler } from "../../TransformHandler";
 import { UserSettings } from "../../UserSettings";
+import { renderAllianceRemaining } from "../../utilities/AllianceExpiry";
 import {
   formatKeyForDisplay,
   getTranslatedPlayerTeamLabel,
@@ -363,7 +364,7 @@ export class PlayerInfoOverlay extends LitElement implements Controller {
     if (remainingTicks > 0) {
       remainingSeconds = Math.max(0, Math.floor(remainingTicks / 10)); // 10 ticks per second
     }
-    return renderDuration(remainingSeconds);
+    return renderAllianceRemaining(remainingSeconds);
   }
 
   private renderPlayerNameIcons(icons: ReturnType<typeof getPlayerIcons>) {

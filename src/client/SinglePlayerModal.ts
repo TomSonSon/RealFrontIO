@@ -815,7 +815,7 @@ export class SinglePlayerModal extends BaseModal {
       nations: this.nations,
     };
     this.realisticWorld = true;
-    this.selectedMap = GameMapType.World;
+    this.selectedMap = GameMapType.RealisticWorld;
     this.useRandomMap = false;
     this.gameMode = GameMode.FFA;
     this.compactMap = false;

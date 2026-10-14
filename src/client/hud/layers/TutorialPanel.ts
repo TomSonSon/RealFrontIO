@@ -136,7 +136,11 @@ export class TutorialPanel extends LitElement implements Controller {
     // subscribed to TutorialStateEvent.
     if (!this.started) {
       this.started = true;
-      this.setActive(!this.userSettings.tutorialDismissed());
+      // Real borders starts by clicking a country, which these steps don't cover.
+      this.setActive(
+        !this.userSettings.tutorialDismissed() &&
+          !this.game.config().isRealBorders(),
+      );
     }
     if (!this.active) return;
 

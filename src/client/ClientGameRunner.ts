@@ -84,6 +84,7 @@ import { createRenderer, GameRenderer } from "./hud/GameRenderer";
 import { goldRateTracker } from "./hud/layers/lib/GoldRateTracker";
 import {
   applyGraphicsOverrides,
+  applyRealBordersOverrides,
   createRenderSettings,
   deepAssign,
   GLUnavailableError,
@@ -748,6 +749,9 @@ async function createClientGame(
     // right colors on the first build.
     const resolveRenderSettings = (): RenderSettings => {
       const settings = createRenderSettings();
+      if (config.isRealBorders()) {
+        applyRealBordersOverrides(settings, gameMap.gameMap.width());
+      }
       applyGraphicsOverrides(settings, userSettings.graphicsOverrides());
       return settings;
     };
@@ -1637,7 +1641,7 @@ export class ClientGameRunner {
     // TODO: honor a global "limit auto-boat to nearby shore" flag once it exists.
     // if (!this.userSettings.autoBoatNearbyOnly()) return true;
     const distanceSquared = this.gameView.euclideanDistSquared(tile, canBuild);
-    const limit = 100;
+    const limit = 100 * this.gameView.config().mapScale();
     const limitSquared = limit * limit;
     return distanceSquared < limitSquared;
   }

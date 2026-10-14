@@ -163,6 +163,9 @@
   "account_settings_modal": {
     "title": "Account Settings"
   },
+  "alliance": {
+    "permanent": "Permanent"
+  },
   "ban_notice": {
     "appeal": "If you believe this is a mistake, contact us on Discord.",
     "category": {
@@ -1559,6 +1562,7 @@
     "pulicatlake": "Pulicat Lake",
     "qingchina": "Qing China",
     "random": "Random",
+    "realisticworld": "Realistic World",
     "riodejaneiro": "Rio de Janeiro",
     "russia": "Russia",
     "sanfrancisco": "San Francisco",

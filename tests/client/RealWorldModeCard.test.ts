@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/client/Cosmetics", () => ({
   getPlayerCosmetics: vi.fn(async () => ({})),
+  prewarmCosmetics: vi.fn(async () => {}),
 }));
 
 vi.mock("../../src/client/CrazyGamesSDK", () => ({
@@ -162,7 +163,7 @@ describe("Realistic World in the Solo modal", () => {
     );
   });
 
-  it("switches the setup to World / Normal / Free For All and restores it", async () => {
+  it("switches the setup to RealisticWorld / Normal / Free For All and restores it", async () => {
     const modal = createSolo();
     modal.selectedMap = GameMapType.Africa;
     modal.gameMode = GameMode.Team;
@@ -174,7 +175,7 @@ describe("Realistic World in the Solo modal", () => {
     modal.handleConfigRealWorldModeToggled(toggleEvent(true));
     await flush();
     expect(modal.realisticWorld).toBe(true);
-    expect(modal.selectedMap).toBe(GameMapType.World);
+    expect(modal.selectedMap).toBe(GameMapType.RealisticWorld);
     expect(modal.gameMode).toBe(GameMode.FFA);
     expect(modal.compactMap).toBe(false);
     expect(modal.randomSpawn).toBe(false);
@@ -192,7 +193,16 @@ describe("Realistic World in the Solo modal", () => {
     expect(modal.nations).toBe(2);
   });
 
-  it("sends publicGameModifiers.isRealisticWorld only when on for World / Normal / FFA", async () => {
+  it("the home screen Realistic World entry selects RealisticWorld on open", async () => {
+    const modal = createSolo();
+    modal.selectedMap = GameMapType.Africa;
+    modal.onOpen({ realisticWorld: "true" });
+    await flush();
+    expect(modal.realisticWorld).toBe(true);
+    expect(modal.selectedMap).toBe(GameMapType.RealisticWorld);
+  });
+
+  it("sends publicGameModifiers.isRealisticWorld only when on for RealisticWorld / Normal / FFA", async () => {
     const modal = createSolo();
     const configs: any[] = [];
     modal.addEventListener("join-lobby", (e: Event) =>
@@ -203,7 +213,7 @@ describe("Realistic World in the Solo modal", () => {
     await flush();
     await modal.startGame();
     expect(configs[0].publicGameModifiers).toEqual({ isRealisticWorld: true });
-    expect(configs[0].gameMap).toBe(GameMapType.World);
+    expect(configs[0].gameMap).toBe(GameMapType.RealisticWorld);
     expect(configs[0].gameMapSize).toBe(GameMapSize.Normal);
     expect(configs[0].gameMode).toBe(GameMode.FFA);
 
@@ -241,7 +251,7 @@ describe("Realistic World in the Host lobby", () => {
     host.handleConfigRealWorldModeToggled(toggleEvent(true));
     await flush();
     expect(host.realisticWorld).toBe(true);
-    expect(host.selectedMap).toBe(GameMapType.World);
+    expect(host.selectedMap).toBe(GameMapType.RealisticWorld);
     expect(host.gameMode).toBe(GameMode.FFA);
     expect(host.compactMap).toBe(false);
     expect(host.randomSpawn).toBe(false);
