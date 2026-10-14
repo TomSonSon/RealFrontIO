@@ -713,6 +713,7 @@ export class NationNukeBehavior {
       increment: speed,
       distanceBasedHeight: true, // Atom/Hydrogen bombs use distance-based height
       directionUp: true, // AI nukes always go "up" for now
+      minHeight: this.game.config().parabolaMinHeight(),
     });
 
     const trajectory = pathFinder.findPath(spawnTile, targetTile) ?? [];
@@ -837,7 +838,11 @@ export class NationNukeBehavior {
     // On Medium, apply a simple local SAM penalty.
     // On Hard & Impossible we rely on trajectory-based interception checks instead. See maybeSendNuke().
     if (difficulty === Difficulty.Medium) {
-      const dist50 = euclDistFN(tile, 50, false);
+      const dist50 = euclDistFN(
+        tile,
+        50 * this.game.config().mapScale(),
+        false,
+      );
       const hasSam = targets.some(
         (unit) =>
           unit.type() === UnitType.SAMLauncher &&
@@ -1008,6 +1013,7 @@ export class NationNukeBehavior {
           increment: nukeSpeed,
           distanceBasedHeight: true,
           directionUp: true,
+          minHeight: this.game.config().parabolaMinHeight(),
         });
         const trajectory = pathFinder.findPath(silo.tile(), targetTile) ?? [];
         if (trajectory.length === 0) continue;

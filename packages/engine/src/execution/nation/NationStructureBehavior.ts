@@ -18,6 +18,7 @@ import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Attack, Game, Player, Unit } from "../../game/Game";
 import { Cluster } from "../../game/TrainStation";
+import { isCityCapReached } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -591,7 +592,10 @@ export class NationStructureBehavior {
     if (this.game.config().isUnitDisabled(UnitType.City)) {
       return Math.max(
         1,
-        Math.floor(this.player.numTilesOwned() / TILES_PER_CITY_EQUIVALENT),
+        Math.floor(
+          this.player.numTilesOwned() /
+            (TILES_PER_CITY_EQUIVALENT * this.game.config().mapAreaScale()),
+        ),
       );
     }
     return this.player.unitsOwned(UnitType.City);
@@ -613,7 +617,8 @@ export class NationStructureBehavior {
     const landTiles = this.game.numLandTiles();
     if (landTiles <= 0) return false;
     return (
-      this.game.nations().length / landTiles > HIGH_NATION_DENSITY_THRESHOLD
+      this.game.nations().length / landTiles >
+      HIGH_NATION_DENSITY_THRESHOLD / this.game.config().mapAreaScale()
     );
   }
 
@@ -668,6 +673,9 @@ export class NationStructureBehavior {
 
   private maybeSpawnStructure(type: UnitType): boolean {
     const game = this.game;
+    if (type === UnitType.City && isCityCapReached(game, this.player)) {
+      return false;
+    }
     const perceivedCost = this.getPerceivedCost(type);
     if (this.player.gold() < perceivedCost) {
       return false;
@@ -676,7 +684,8 @@ export class NationStructureBehavior {
     // Check if we should upgrade instead of building new
     const structures = this.player.units(type);
     if (
-      this.getTotalStructureDensity() > UPGRADE_DENSITY_THRESHOLD &&
+      this.getTotalStructureDensity() >
+        UPGRADE_DENSITY_THRESHOLD / game.config().mapAreaScale() &&
       game.config().unitInfo(type).upgradable
     ) {
       if (this.maybeUpgradeStructure(structures)) {
@@ -787,7 +796,10 @@ export class NationStructureBehavior {
    * @returns true if an upgrade was initiated, false otherwise
    */
   private maybeUpgradeStructure(structures: Unit[]): boolean {
-    if (this.getTotalStructureDensity() <= UPGRADE_DENSITY_THRESHOLD) {
+    if (
+      this.getTotalStructureDensity() <=
+      UPGRADE_DENSITY_THRESHOLD / this.game.config().mapAreaScale()
+    ) {
       return false;
     }
     if (structures.length === 0) {
@@ -942,7 +954,12 @@ export class NationStructureBehavior {
         const { difficulty } = this.game.config().gameConfig();
         if (difficulty !== Difficulty.Easy) {
           const size = this.game.getWaterComponentSize(neighbor);
-          if (size !== null && size < MIN_PORT_WATER_COMPONENT_SIZE) continue;
+          if (
+            size !== null &&
+            size <
+              MIN_PORT_WATER_COMPONENT_SIZE * this.game.config().mapAreaScale()
+          )
+            continue;
         }
         return true;
       }

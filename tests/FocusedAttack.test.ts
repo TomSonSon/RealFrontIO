@@ -17,15 +17,20 @@ import { setup } from "./util/Setup";
 describe("focused (region) attacks", () => {
   test("focusBudgetWeight makes tiles near the focus cheap to conquer", () => {
     // Within the focus radius: 0.5x budget cost (2x throughput).
-    expect(focusBudgetWeight(0)).toBe(0.5);
-    expect(focusBudgetWeight(40)).toBe(0.5);
+    const radius = 40;
+    expect(focusBudgetWeight(0, radius)).toBe(0.5);
+    expect(focusBudgetWeight(40, radius)).toBe(0.5);
     // Far away: the unfocused cost, never a penalty.
-    expect(focusBudgetWeight(80)).toBe(1);
-    expect(focusBudgetWeight(500)).toBe(1);
+    expect(focusBudgetWeight(80, radius)).toBe(1);
+    expect(focusBudgetWeight(500, radius)).toBe(1);
     // Monotone: closer is always cheaper than farther.
-    expect(focusBudgetWeight(10)).toBeLessThan(focusBudgetWeight(50));
-    expect(focusBudgetWeight(50)).toBeLessThan(focusBudgetWeight(70));
-    expect(focusBudgetWeight(70)).toBeDefined();
+    expect(focusBudgetWeight(10, radius)).toBeLessThan(
+      focusBudgetWeight(50, radius),
+    );
+    expect(focusBudgetWeight(50, radius)).toBeLessThan(
+      focusBudgetWeight(70, radius),
+    );
+    expect(focusBudgetWeight(70, radius)).toBeDefined();
   });
 
   test("AttackIntentSchema accepts an optional focus tile", () => {
