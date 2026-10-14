@@ -2,6 +2,7 @@ import { AllPlayersStats, ClientID } from "../Schemas";
 
 import { TileRef } from "./GameMap";
 import { GameUpdate, GameUpdateType } from "./GameUpdates";
+import { GameMapType } from "./Maps.gen";
 
 function isEnumValue<T extends Record<string, string | number>>(
   enumObj: T,
@@ -118,6 +119,11 @@ export {
   type MapInfo,
   type SpecialModifierKey,
 } from "./Maps.gen";
+
+/** Maps that load by type but stay out of the pickers and the random map pool. */
+export const hiddenMaps: ReadonlySet<GameMapType> = new Set([
+  GameMapType.RealisticWorld,
+]);
 
 export enum GameType {
   Singleplayer = "Singleplayer",

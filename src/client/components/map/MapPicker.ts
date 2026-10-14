@@ -1,6 +1,7 @@
 import {
   Difficulty,
   GameMapType,
+  hiddenMaps,
   MapCategory,
   mapCategoryOrder,
   MapInfo,
@@ -27,7 +28,9 @@ const featuredMaps: MapInfo[] = maps
   );
 
 function mapsInCategory(category: MapCategory): MapInfo[] {
-  return maps.filter((m) => m.categories.includes(category));
+  return maps.filter(
+    (m) => m.categories.includes(category) && !hiddenMaps.has(m.type),
+  );
 }
 
 @customElement("map-picker")
@@ -90,6 +93,7 @@ export class MapPicker extends LitElement {
     if (!this.searchQuery.trim()) return [];
     const query = this.searchQuery.trim().toLowerCase();
     return maps.filter((m) => {
+      if (hiddenMaps.has(m.type)) return false;
       const name = translateText(m.translationKey).toLowerCase();
       const id = m.id.toLowerCase();
       return name.includes(query) || id.includes(query);

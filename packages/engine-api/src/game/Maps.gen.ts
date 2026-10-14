@@ -102,6 +102,7 @@ export enum GameMapType {
   Pluto = "Pluto", // map-generator/assets/maps/pluto/info.json
   PulicatLake = "Pulicat Lake", // map-generator/assets/maps/pulicatlake/info.json
   QingChina = "Qing China", // map-generator/assets/maps/qingchina/info.json
+  RealisticWorld = "Realistic World", // map-generator/assets/maps/realisticworld/info.json
   RioDeJaneiro = "Rio de Janeiro", // map-generator/assets/maps/riodejaneiro/info.json
   Russia = "Russia", // map-generator/assets/maps/russia/info.json
   SanFrancisco = "San Francisco", // map-generator/assets/maps/sanfrancisco/info.json
@@ -2100,6 +2101,17 @@ export const maps: readonly MapInfo[] = [
     specialFrequency: -1,
     defaultNationCount: 32,
     themes: ["asia"],
+  },
+  {
+    id: "RealisticWorld",
+    type: GameMapType.RealisticWorld,
+    translationKey: "map.realisticworld",
+    categories: ["world"],
+    multiplayerFrequency: 0,
+    ffaFrequency: -1,
+    teamFrequency: -1,
+    specialFrequency: -1,
+    defaultNationCount: 0,
   },
   {
     id: "RioDeJaneiro",
