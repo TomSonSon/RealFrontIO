@@ -46,13 +46,19 @@ export type Intent =
   | KickPlayerIntent
   | TogglePauseIntent
   | UpdateGameConfigIntent
-  | ToggleGameStartTimer;
+  | ToggleGameStartTimer
+  | DeclareCoalitionWarIntent
+  | PurchaseTechIntent;
 
 export type AttackIntent = z.infer<typeof AttackIntentSchema>;
 export type CancelAttackIntent = z.infer<typeof CancelAttackIntentSchema>;
 export type SpawnIntent = z.infer<typeof SpawnIntentSchema>;
 export type BoatAttackIntent = z.infer<typeof BoatAttackIntentSchema>;
 export type EmbargoAllIntent = z.infer<typeof EmbargoAllIntentSchema>;
+export type DeclareCoalitionWarIntent = z.infer<
+  typeof DeclareCoalitionWarIntentSchema
+>;
+export type PurchaseTechIntent = z.infer<typeof PurchaseTechIntentSchema>;
 export type CancelBoatIntent = z.infer<typeof CancelBoatIntentSchema>;
 export type AllianceRequestIntent = z.infer<typeof AllianceRequestIntentSchema>;
 export type AllianceRejectIntent = z.infer<typeof AllianceRejectIntentSchema>;
@@ -260,6 +266,7 @@ export const GameConfigSchema = z.object({
       isRandomSpawn: z.boolean().optional(),
       isCrowded: z.boolean().optional(),
       isHardNations: z.boolean().optional(),
+      isRealisticWorld: z.boolean().optional(),
       startingGold: zb.uint().optional(),
       goldMultiplier: zb.float({ min: 0.1, max: 1000 }).optional(),
       isAlliancesDisabled: z.boolean().optional(),
@@ -404,6 +411,10 @@ export const AttackIntentSchema = z.object({
   type: z.literal("attack"),
   targetID: MappedID.nullable(),
   troops: zb.float({ min: 0 }).nullable(),
+  // Optional focus point: concentrate the attack on the border region around
+  // this tile ("push a specific region harder") instead of the whole frontier.
+  // Omitted => classic whole-border attack.
+  tile: zb.uint().optional(),
 });
 
 export const SpawnIntentSchema = z.object({
@@ -549,6 +560,25 @@ export const ToggleGameStartTimerIntentSchema = z.object({
   type: z.literal("toggle_game_start_timer"),
 });
 
+// section 8.6 coalition war declaration (Realistic World only). The initiator is the
+// intent's own sender (stamped clientID); `target` is the player the coalition
+// goes to war against and `candidates` are the friendly allies to invite. Only
+// nation candidates are asked: each that votes YES commits (hostile +
+// embargo), resolved deterministically via NationCoalitionBehavior. Humans are
+// never forced. Classic mode (no realism) ignores it.
+export const DeclareCoalitionWarIntentSchema = z.object({
+  type: z.literal("declare_coalition_war"),
+  target: MappedID,
+  candidates: MappedID.array().max(32),
+});
+
+// Realistic World tech tree: buy one node with gold. Invalid ids, unmet
+// prerequisites or too little gold are silently ignored by the engine.
+export const PurchaseTechIntentSchema = z.object({
+  type: z.literal("purchase_tech"),
+  techId: z.string().min(1).max(32),
+});
+
 export const IntentSchema = z.discriminatedUnion("type", [
   AttackIntentSchema,
   CancelAttackIntentSchema,
@@ -575,6 +605,8 @@ export const IntentSchema = z.discriminatedUnion("type", [
   TogglePauseIntentSchema,
   UpdateGameConfigIntentSchema,
   ToggleGameStartTimerIntentSchema,
+  DeclareCoalitionWarIntentSchema,
+  PurchaseTechIntentSchema,
 ]);
 
 // StampedIntent = Intent with server-stamped clientID (used in turns and execution)

@@ -43,6 +43,7 @@ export function diffPlayerUpdate(
     prev.displayName === next.displayName &&
     prev.clanTag === next.clanTag &&
     prev.nationFlag === next.nationFlag &&
+    prev.realismKey === next.realismKey &&
     prev.team === next.team &&
     prev.smallID === next.smallID &&
     prev.playerType === next.playerType &&
@@ -63,6 +64,10 @@ export function diffPlayerUpdate(
     prev.betrayals === next.betrayals &&
     prev.lastDeleteUnitTick === next.lastDeleteUnitTick &&
     prev.isLobbyCreator === next.isLobbyCreator &&
+    stringArrayEqual(prev.techRanks, next.techRanks) &&
+    prev.reputation === next.reputation &&
+    prev.embargoSenders === next.embargoSenders &&
+    prev.allianceBlocked === next.allianceBlocked &&
     numberArrayEqual(prev.allies, next.allies) &&
     numberArrayEqual(prev.targets, next.targets) &&
     stringArrayEqual(
@@ -96,6 +101,7 @@ export function diffPlayerUpdate(
   setIfDifferent("displayName", prev.displayName === next.displayName);
   setIfDifferent("clanTag", prev.clanTag === next.clanTag);
   setIfDifferent("nationFlag", prev.nationFlag === next.nationFlag);
+  setIfDifferent("realismKey", prev.realismKey === next.realismKey);
   setIfDifferent("team", prev.team === next.team);
   setIfDifferent("smallID", prev.smallID === next.smallID);
   setIfDifferent("playerType", prev.playerType === next.playerType);
@@ -130,6 +136,13 @@ export function diffPlayerUpdate(
     prev.lastDeleteUnitTick === next.lastDeleteUnitTick,
   );
   setIfDifferent("isLobbyCreator", prev.isLobbyCreator === next.isLobbyCreator);
+  setIfDifferent("techRanks", stringArrayEqual(prev.techRanks, next.techRanks));
+  setIfDifferent("reputation", prev.reputation === next.reputation);
+  setIfDifferent("embargoSenders", prev.embargoSenders === next.embargoSenders);
+  setIfDifferent(
+    "allianceBlocked",
+    prev.allianceBlocked === next.allianceBlocked,
+  );
   setIfDifferent("allies", numberArrayEqual(prev.allies, next.allies));
   setIfDifferent("targets", numberArrayEqual(prev.targets, next.targets));
   setIfDifferent(

@@ -7,6 +7,7 @@ import {
   PlayerType,
   Relation,
 } from "@openfront/engine-api/game/GameTypes";
+import { coalitionSanctionPercent } from "@openfront/engine-api/resources/Sanctions";
 import { Emoji, flattenedEmojiTable } from "@openfront/engine-api/Schemas";
 import { renderNumber, renderTroops } from "@openfront/engine-lib/Format";
 import type { UserMeResponse } from "@openfront/shared/ApiSchemas";
@@ -16,7 +17,7 @@ import {
   type LevelBadge,
   packLevelBadge,
 } from "@openfront/shared/LevelBadgeWire";
-import { html, LitElement } from "lit";
+import { html, LitElement, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import Countries from "resources/countries.json" with { type: "json" };
 import { fetchLobbyListed, getUserMe } from "../../Api";
@@ -35,6 +36,7 @@ import {
   PlayerReportedEvent,
   SendAllianceRequestIntentEvent,
   SendBreakAllianceIntentEvent,
+  SendDeclareCoalitionWarIntentEvent,
   SendEmbargoAllIntentEvent,
   SendEmbargoIntentEvent,
   SendEmojiIntentEvent,
@@ -42,6 +44,8 @@ import {
 } from "../../Transport";
 import { UIState } from "../../UIState";
 import { UserSettings } from "../../UserSettings";
+import { renderAllianceRemaining } from "../../utilities/AllianceExpiry";
+import { realisticWorldApplies } from "../../utilities/RealisticWorldToggle";
 import { renderDuration, showToast, translateText } from "../../Utils";
 import { GameView, PlayerView } from "../../view";
 import { ChatModal } from "./ChatModal";
@@ -61,6 +65,7 @@ const targetIcon = assetUrl("images/TargetIconWhite.svg");
 const startTradingIcon = assetUrl("images/TradingIconWhite.svg");
 const traitorIcon = assetUrl("images/TraitorIconLightRed.svg");
 const breakAllianceIcon = assetUrl("images/TraitorIconWhite.svg");
+const declareCoalitionWarIcon = assetUrl("images/SwordIconWhite.svg");
 
 // The viewer's own badge from their /users/@me progress. Shown even when they
 // hide their level from others, as their profile does.
@@ -193,7 +198,7 @@ export class PlayerPanel extends LitElement implements Controller {
 
           if (remainingTicks > 0) {
             this.allianceExpirySeconds = remainingSeconds;
-            this.allianceExpiryText = renderDuration(remainingSeconds);
+            this.allianceExpiryText = renderAllianceRemaining(remainingSeconds);
           } else {
             this.allianceExpirySeconds = null;
             this.allianceExpiryText = null;
@@ -327,6 +332,60 @@ export class PlayerPanel extends LitElement implements Controller {
   ) {
     e.stopPropagation();
     this.eventBus.emit(new SendEmbargoIntentEvent(other, "stop"));
+    this.hide();
+  }
+
+  // section 8.6 coalition war declaration - offered only in Realistic World games
+  // (where the engine's declareCoalitionWar does anything). Invites the
+  // viewer's current allies as candidate voters.
+  private isCoalitionWarEnabled(): boolean {
+    const gc = this.g.config().gameConfig();
+    return realisticWorldApplies(
+      gc.gameMap,
+      gc.publicGameModifiers?.isRealisticWorld === true,
+      gc.gameMapSize,
+    );
+  }
+
+  // Friendly players (allies, teammates) are never valid war targets; the
+  // engine drops the declaration.
+  private canDeclareCoalitionWar(my: PlayerView, other: PlayerView): boolean {
+    return this.isCoalitionWarEnabled() && !my.isFriendly(other);
+  }
+
+  private handleDeclareCoalitionWarClick(
+    e: Event,
+    myPlayer: PlayerView,
+    other: PlayerView,
+  ) {
+    e.stopPropagation();
+    if (!this.isCoalitionWarEnabled()) {
+      showToast(
+        translateText("player_panel.declare_coalition_war_disabled"),
+        "red",
+      );
+      return;
+    }
+    const candidates = myPlayer
+      .allies()
+      .filter((a) => a.type() === PlayerType.Nation)
+      .slice(0, 32);
+    if (candidates.length === 0) {
+      showToast(
+        translateText("player_panel.declare_coalition_war_no_allies"),
+        "red",
+      );
+      return;
+    }
+    this.eventBus.emit(
+      new SendDeclareCoalitionWarIntentEvent(other, candidates),
+    );
+    showToast(
+      translateText("player_panel.declare_coalition_war_sent", {
+        name: other.displayName(),
+      }),
+      "green",
+    );
     this.hide();
   }
 
@@ -768,6 +827,147 @@ export class PlayerPanel extends LitElement implements Controller {
     `;
   }
 
+  private renderDiplomacyRow(
+    label: string,
+    value: string,
+    hint?: string,
+    tone: "neutral" | "amber" | "red" = "neutral",
+  ) {
+    const toneClass = {
+      neutral: "text-zinc-200",
+      amber: "text-amber-400",
+      red: "text-red-400",
+    }[tone];
+    return html`
+      <div class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
+        <div class="text-[15px] font-medium text-zinc-100 leading-snug">
+          ${label}
+        </div>
+        <div class="text-right text-[14px] font-semibold ${toneClass}">
+          ${value}
+          ${hint
+            ? html`<div class="text-[12px] font-normal text-zinc-400">
+                ${hint}
+              </div>`
+            : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  // Realistic World: how the real-life diplomacy systems apply to the clicked
+  // country from the viewer's side. Hidden for the viewer's own country.
+  private renderDiplomacy(my: PlayerView, other: PlayerView) {
+    if (other === my || !this.isCoalitionWarEnabled()) return html``;
+
+    const rows: TemplateResult[] = [];
+
+    const reputation = other.reputation();
+    const blocked = other.allianceBlocked();
+    const standingKey = blocked
+      ? "diplomacy.standing_betrayer"
+      : reputation < 0
+        ? "diplomacy.standing_shaky"
+        : "diplomacy.standing_good";
+    const standingTone = blocked ? "red" : reputation < 0 ? "amber" : "neutral";
+    rows.push(
+      this.renderDiplomacyRow(
+        translateText("diplomacy.standing"),
+        translateText(standingKey),
+        blocked ? translateText("diplomacy.alliances_blocked") : undefined,
+        standingTone,
+      ),
+    );
+
+    const allianceText = my.isAlliedWith(other)
+      ? translateText("diplomacy.allied")
+      : my.allianceBlocked()
+        ? translateText("diplomacy.you_cannot_ally")
+        : other.allianceBlocked()
+          ? translateText("diplomacy.blocked_betrayer")
+          : translateText("diplomacy.can_ally");
+    rows.push(
+      this.renderDiplomacyRow(
+        translateText("diplomacy.alliance"),
+        allianceText,
+      ),
+    );
+
+    const youEmbargo = my.hasEmbargoAgainst(other);
+    const theyEmbargo = other.hasEmbargoAgainst(my);
+    const tradeText =
+      youEmbargo && theyEmbargo
+        ? translateText("diplomacy.trade_mutual")
+        : youEmbargo
+          ? translateText("diplomacy.trade_you_embargo")
+          : theyEmbargo
+            ? translateText("diplomacy.trade_they_embargo")
+            : translateText("diplomacy.trade_open");
+    rows.push(
+      this.renderDiplomacyRow(translateText("diplomacy.trade"), tradeText),
+    );
+
+    const senders = other.embargoSenders();
+    if (senders >= 1) {
+      rows.push(
+        this.renderDiplomacyRow(
+          translateText("diplomacy.sanctions"),
+          translateText("diplomacy.sanctioned_by", {
+            count: senders,
+            percent: 100 - coalitionSanctionPercent(senders),
+          }),
+          undefined,
+          "amber",
+        ),
+      );
+    }
+
+    const theirTroops = other.troops();
+    const myTroops = my.troops();
+    const ratio =
+      myTroops === 0
+        ? theirTroops > 0
+          ? Infinity
+          : 1
+        : theirTroops / myTroops;
+    const strengthText =
+      ratio > 1.5
+        ? translateText("diplomacy.strength_much_stronger")
+        : ratio < 0.67
+          ? translateText("diplomacy.strength_much_weaker")
+          : translateText("diplomacy.strength_comparable");
+    rows.push(
+      this.renderDiplomacyRow(
+        translateText("diplomacy.strength"),
+        strengthText,
+      ),
+      this.renderDiplomacyRow(
+        translateText("diplomacy.troops"),
+        translateText("diplomacy.amount_vs_yours", {
+          amount: renderTroops(theirTroops),
+          yours: renderTroops(myTroops),
+        }),
+      ),
+      this.renderDiplomacyRow(
+        translateText("diplomacy.gold"),
+        translateText("diplomacy.amount_vs_yours", {
+          amount: renderNumber(other.gold()),
+          yours: renderNumber(my.gold()),
+        }),
+      ),
+    );
+
+    return html`
+      <ui-divider></ui-divider>
+      <div class="select-none flex flex-col gap-2">
+        <div class="text-[15px] font-medium text-zinc-200">
+          ${translateText("diplomacy.title")}
+        </div>
+        ${rows}
+      </div>
+    `;
+  }
+
   private renderAlliances(other: PlayerView) {
     const allies = other.allies();
 
@@ -840,7 +1040,7 @@ export class PlayerPanel extends LitElement implements Controller {
                           class="text-[11px] font-semibold leading-none tabular-nums ${this.getExpiryColorClass(
                             remainingSeconds,
                           )}"
-                          >${renderDuration(remainingSeconds)}</span
+                          >${renderAllianceRemaining(remainingSeconds)}</span
                         >`
                       : ""}
                   </li>`;
@@ -961,6 +1161,21 @@ export class PlayerPanel extends LitElement implements Controller {
                       label: translateText("player_panel.start_trade"),
                       type: "green",
                     })}
+                ${this.canDeclareCoalitionWar(my, other)
+                  ? actionButton({
+                      onClick: (e: MouseEvent) =>
+                        this.handleDeclareCoalitionWarClick(e, my, other),
+                      icon: declareCoalitionWarIcon,
+                      iconAlt: translateText(
+                        "player_panel.declare_coalition_war",
+                      ),
+                      title: `${translateText("player_panel.declare_coalition_war")}: ${translateText("diplomacy.coalition_war_hint")}`,
+                      label: translateText(
+                        "player_panel.declare_coalition_war",
+                      ),
+                      type: "red",
+                    })
+                  : ""}
                 ${canBreakAlliance
                   ? actionButton({
                       onClick: (e: MouseEvent) =>
@@ -1177,6 +1392,9 @@ export class PlayerPanel extends LitElement implements Controller {
 
                     <!-- Stats: betrayals / trading -->
                     ${this.renderStats(other, viewer)}
+
+                    <!-- Diplomacy (Realistic World) -->
+                    ${this.renderDiplomacy(viewer, other)}
 
                     <ui-divider></ui-divider>
 

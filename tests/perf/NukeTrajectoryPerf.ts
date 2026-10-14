@@ -9,8 +9,16 @@ import { fileURLToPath } from "url";
 import {
   buildNukeTrajectory,
   SAMInfo,
+  TrajectoryLimits,
 } from "../../src/client/render/gl/utils/NukeTrajectory";
 import { setup } from "../util/Setup";
+
+// Classic-map limits (mapScale 1).
+const LIMITS: TrajectoryLimits = {
+  parabolaMinHeight: 50,
+  targetableRange: 150,
+  maxSamRange: 150,
+};
 
 // Setup giant world map scenario with 2 players for in-game pipeline testing
 const giantMapGame = await setup(
@@ -145,16 +153,16 @@ const results: string[] = [];
 
 new Benchmark.Suite()
   .add("Scenario 1: 0 SAMs (Early game)", () => {
-    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, []);
+    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, [], LIMITS);
   })
   .add("Scenario 2: 5 SAMs (Active Intercept)", () => {
-    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, sparseSams);
+    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, sparseSams, LIMITS);
   })
   .add("Scenario 3: 20 SAMs (Mid-Late Game)", () => {
-    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, denseSams);
+    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, denseSams, LIMITS);
   })
   .add("Scenario 4: 100 SAMs (Giant World Map Endgame)", () => {
-    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, giantSams);
+    buildNukeTrajectory(srcX, srcY, dstX, dstY, mapH, true, giantSams, LIMITS);
   })
   .add("In-Game Phase 1: Start Render (Find Silo + Extract SAMs)", () => {
     startNukeTrajectoryRender();
@@ -171,6 +179,7 @@ new Benchmark.Suite()
         mapH,
         inGameStaticTrajectory.directionUp,
         inGameStaticTrajectory.sams,
+        LIMITS,
       );
     },
   )

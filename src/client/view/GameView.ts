@@ -114,6 +114,7 @@ export class GameView implements GameLike {
   // tick (PlayerUpdates are partial — field presence means "changed").
   /** Names: nameData record applied, or a player was added. */
   private _namesDirty = true;
+  private _chokepoints: { id: string; controllerSmallID: number | null }[] = [];
   /** Relation matrix: allies/embargoes changed, or a player was added. */
   private _relationsDirty = true;
   /** Alliance clusters: allies changed, or a player was added. */
@@ -257,6 +258,13 @@ export class GameView implements GameLike {
     // Nuke blast-radius tiles (for nukeable layer destruction).
     const packedNukes = gu.packedNukeImpacts;
     this.nukeImpactTiles = packedNukes ? Array.from(packedNukes) : [];
+
+    if (gu.chokepoints !== undefined) {
+      this._chokepoints = gu.chokepoints.map((c) => ({
+        id: c.id,
+        controllerSmallID: c.controller,
+      }));
+    }
 
     if (gu.packedMotionPlans) {
       this.motion.applyRecords(unpackMotionPlans(gu.packedMotionPlans));
@@ -549,6 +557,7 @@ export class GameView implements GameLike {
     f.nukeTelegraphs = extractNukeTelegraphs(
       this._unitStates,
       this._map.width(),
+      (unitType) => this._config.nukeMagnitudes(unitType),
       this._myPlayer?.smallID() ?? 0,
       // The latest relation matrix — recomputed above when dirty, otherwise
       // carried over on the frame from the last rebuild.
@@ -705,6 +714,11 @@ export class GameView implements GameLike {
       playerId,
       includeUnderConstruction,
     );
+  }
+
+  /** Latest known chokepoint controllers; empty when realism is off. */
+  chokepointControllers(): { id: string; controllerSmallID: number | null }[] {
+    return this._chokepoints;
   }
 
   myClientID(): ClientID | undefined {

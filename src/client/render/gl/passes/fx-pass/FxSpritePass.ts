@@ -352,7 +352,11 @@ export class FxSpritePass {
     const x = unit.pos % this.mapW;
     const y = (unit.pos - x) / this.mapW;
 
-    const nukeRadius = nukeExplosionRadius(this.settings.fx, typeName);
+    const nukeRadius = nukeExplosionRadius(
+      this.settings.fx,
+      typeName,
+      this.config.mapScale(),
+    );
     if (nukeRadius !== undefined) {
       if (unit.reachedTarget) {
         this.spawnNukeSprites(x, y, nukeRadius, now, unit.pos);

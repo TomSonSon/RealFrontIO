@@ -33,6 +33,8 @@ import { GameMetrics } from "./GameMetrics";
 import { showInGameAlert } from "./InGameModal";
 import {
   AutoUpgradeEvent,
+  CloseViewEvent,
+  CountryPickEvent,
   DoBoatAttackEvent,
   DoBreakAllianceEvent,
   DoGroundAttackEvent,
@@ -82,6 +84,7 @@ import { createRenderer, GameRenderer } from "./hud/GameRenderer";
 import { goldRateTracker } from "./hud/layers/lib/GoldRateTracker";
 import {
   applyGraphicsOverrides,
+  applyRealBordersOverrides,
   createRenderSettings,
   deepAssign,
   GLUnavailableError,
@@ -96,6 +99,7 @@ import { ALL_UNIT_TYPES, UnitState } from "./render/types";
 import { audioMixer, initAudioMixer } from "./sound/AudioMixer";
 import { SoundManager } from "./sound/SoundManager";
 import { themeProvider } from "./theme/ThemeProvider";
+import { countryPickOwner } from "./utilities/CountryPick";
 import { GameView, PlayerView } from "./view";
 
 export interface LobbyConfig {
@@ -745,6 +749,9 @@ async function createClientGame(
     // right colors on the first build.
     const resolveRenderSettings = (): RenderSettings => {
       const settings = createRenderSettings();
+      if (config.isRealBorders()) {
+        applyRealBordersOverrides(settings, gameMap.gameMap.width());
+      }
       applyGraphicsOverrides(settings, userSettings.graphicsOverrides());
       return settings;
     };
@@ -1234,6 +1241,18 @@ export class ClientGameRunner {
     console.log(`clicked cell ${cell}`);
     const tile = this.gameView.ref(cell.x, cell.y);
     if (
+      this.gameView.config().isRealBorders() &&
+      this.gameView.inSpawnPhase()
+    ) {
+      const owner = countryPickOwner(this.gameView, tile);
+      if (owner !== null) {
+        this.eventBus.emit(new CountryPickEvent(owner.smallID()));
+      } else {
+        this.eventBus.emit(new CloseViewEvent());
+      }
+      return;
+    }
+    if (
       this.gameView.isLand(tile) &&
       !this.gameView.hasOwner(tile) &&
       this.gameView.inSpawnPhase() &&
@@ -1259,6 +1278,7 @@ export class ClientGameRunner {
             new SendAttackIntentEvent(
               this.gameView.owner(tile).id(),
               this.myPlayer!.troops() * this.renderer.uiState.attackRatio,
+              tile,
             ),
           );
         } else if (this.canAutoBoat(actions.buildableUnits, tile)) {
@@ -1430,6 +1450,7 @@ export class ClientGameRunner {
             new SendAttackIntentEvent(
               this.gameView.owner(tile).id(),
               this.myPlayer!.troops() * this.renderer.uiState.attackRatio,
+              tile,
             ),
           );
         }
@@ -1620,7 +1641,7 @@ export class ClientGameRunner {
     // TODO: honor a global "limit auto-boat to nearby shore" flag once it exists.
     // if (!this.userSettings.autoBoatNearbyOnly()) return true;
     const distanceSquared = this.gameView.euclideanDistSquared(tile, canBuild);
-    const limit = 100;
+    const limit = 100 * this.gameView.config().mapScale();
     const limitSquared = limit * limit;
     return distanceSquared < limitSquared;
   }

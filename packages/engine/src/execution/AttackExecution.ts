@@ -32,6 +32,26 @@ import type {
 import { FlatBinaryHeap } from "./utils/FlatBinaryHeap"; // adjust path if needed
 
 const malusForRetreat = 25;
+
+// Focused-attack tuning ("push a specific region harder"). A focus tile makes
+// the attack concentrate its frontier and per-tick budget near that point (the
+// Schwerpunkt / main effort) while other borders become economy-of-force.
+const FOCUS_PRIORITY_BONUS = 60; // min-heap priority offset (focus dequeues first)
+const FOCUS_SPEED_MIN = 0.5; // budget cost multiplier at the focus (2x throughput)
+const FOCUS_SPEED_MAX = 1.0; // budget cost multiplier far away (a focus never slows an attack)
+
+/**
+ * Per-tick budget weight for a conquered tile at `dist` tiles from the focus.
+ * Near the focus tiles are cheap (more conquered per tick); far away they cost
+ * the same as an unfocused attack.
+ * Monotone, deterministic, pure.
+ */
+export function focusBudgetWeight(dist: number, focusRadius: number): number {
+  if (dist <= focusRadius) return FOCUS_SPEED_MIN;
+  if (dist >= focusRadius * 2) return FOCUS_SPEED_MAX;
+  const t = (dist - focusRadius) / focusRadius;
+  return FOCUS_SPEED_MIN + (FOCUS_SPEED_MAX - FOCUS_SPEED_MIN) * t;
+}
 export class AttackExecution implements Execution {
   private active: boolean = true;
   private toConquer = new FlatBinaryHeap();
@@ -59,6 +79,7 @@ export class AttackExecution implements Execution {
     private _targetID: PlayerID | null,
     private sourceTile: TileRef | null = null,
     private removeTroops: boolean = true,
+    private focusTile: TileRef | null = null,
   ) {}
 
   public targetID(): PlayerID | null {
@@ -80,6 +101,10 @@ export class AttackExecution implements Execution {
       console.warn(`target ${this._targetID} not found`);
       this.active = false;
       return;
+    }
+
+    if (this.focusTile !== null && !mg.isValidRef(this.focusTile)) {
+      this.focusTile = null;
     }
 
     this.target =
@@ -338,7 +363,16 @@ export class AttackExecution implements Execution {
         .attackLogic(
           this.attackLogicInput(troopCount, tileToConquer, borderSize),
         );
-      tickBudget -= tickFraction;
+      // Focused attacks spend their per-tick budget fastest near the focus
+      // (more tiles conquered there per tick) and slowest far from it.
+      const weight =
+        this.focusTile !== null
+          ? focusBudgetWeight(
+              this.map.manhattanDist(this.focusTile, tileToConquer),
+              this.mg.config().focusRadius(),
+            )
+          : 1;
+      tickBudget -= tickFraction * weight;
       troopCount -= attackerTroopLoss;
       this.attack.setTroops(troopCount);
       if (targetPlayer) {
@@ -390,6 +424,7 @@ export class AttackExecution implements Execution {
         ? this.mg.numTilesWithFallout() / this.mg.numLandTiles()
         : null,
       borderSize,
+      attackerCombatPower: this.mg.config().attackCombatPower(this._owner),
     };
   }
 
@@ -429,31 +464,55 @@ export class AttackExecution implements Execution {
       }
 
       let mag: number;
+      // In Realistic World mode mountains carry a much heavier frontier
+      // penalty, so attack waves spread around (through passes/plains) rather
+      // than charging the range head-on.
+      const realistic = this.mg.config().isRealisticWorld();
       switch (this.map.terrainType(neighbor)) {
         case TerrainType.Plains:
           mag = 1;
           break;
         case TerrainType.Highland:
-          mag = 1.5;
+          mag = realistic ? 1.8 : 1.5;
           break;
         case TerrainType.Mountain:
-          mag = 2;
+          mag = realistic ? 3.5 : 2;
           break;
         default:
           mag = 0;
           break;
       }
 
+      // Focused attacks concentrate the frontier near the chosen tile: tiles
+      // close to the focus carry a lower priority (min-heap dequeues the
+      // lowest first), so they are conquered before far-flung borders, which
+      // only receive the economy-of-force leftover.
+      let focusPriority = 0;
+      if (this.focusTile !== null) {
+        const focusRadius = this.mg.config().focusRadius();
+        const d = this.map.manhattanDist(this.focusTile, neighbor);
+        if (d < focusRadius) {
+          focusPriority = -FOCUS_PRIORITY_BONUS * (1 - d / focusRadius);
+        }
+      }
+
       const priority =
         (this.random.nextInt(0, 7) + 10) * (1 - numOwnedByMe * 0.5 + mag / 2) +
-        tickNow;
+        tickNow +
+        focusPriority;
 
       this.toConquer.enqueue(neighbor, priority);
     }
   }
 
   private handleDeadDefender() {
-    if (!(this.target.isPlayer() && this.target.numTilesOwned() < 100)) return;
+    if (
+      !(
+        this.target.isPlayer() &&
+        this.target.numTilesOwned() < 100 * this.mg.config().mapAreaScale()
+      )
+    )
+      return;
     const target: Player = this.target;
 
     this.mg.conquerPlayer(this._owner, target);
@@ -508,6 +567,7 @@ export class AttackExecution implements Execution {
       owner: w.player(this._owner),
       targetID: this._targetID,
       sourceTile: this.sourceTile,
+      focusTile: this.focusTile,
       removeTroops: this.removeTroops,
     });
   }
@@ -534,6 +594,7 @@ export class AttackExecution implements Execution {
     this._owner = r.player(s.owner);
     this._targetID = s.targetID;
     this.sourceTile = s.sourceTile;
+    this.focusTile = s.focusTile;
     this.removeTroops = s.removeTroops;
   }
 }
@@ -558,13 +619,21 @@ const AttackExecutionStateSchema = z.object({
   owner: zPlayerRef(),
   targetID: z.string().nullable(),
   sourceTile: zTile().nullable(),
+  focusTile: zTile().nullable(),
   removeTroops: z.boolean(),
 });
 type AttackExecutionState = z.infer<typeof AttackExecutionStateSchema>;
 
 export const AttackExecutionSnapshot = execSnapshotType({
   name: "Attack",
-  version: 1,
+  version: 2,
   schema: AttackExecutionStateSchema,
+  // v1 -> v2: added the optional focus region for region/front-focused attacks.
+  migrations: {
+    1: (d: unknown) => {
+      const old = d as Record<string, unknown>;
+      return { ...old, focusTile: old.focusTile ?? null };
+    },
+  },
   cls: () => AttackExecution,
 });

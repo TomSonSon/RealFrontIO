@@ -8,6 +8,7 @@ import {
 } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { z } from "zod";
 import { PathFinding } from "../pathfinding/PathFinder";
+import type { SteppingPathFinder } from "../pathfinding/types";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -92,11 +93,26 @@ export interface RailPathFinderService {
   findStationsPath(from: TrainStation, to: TrainStation): TrainStation[];
 }
 
+// One search per game: its scratch arrays span the whole minimap, so building
+// one per connection dominated the cost. Kept out of the service so it is not
+// snapshot state.
+const tilePathFinders = new WeakMap<Game, SteppingPathFinder<TileRef>>();
+
 class RailPathFinderServiceImpl implements RailPathFinderService {
   constructor(private game: Game) {}
 
   findTilePath(from: TileRef, to: TileRef): TileRef[] {
-    return PathFinding.Rail(this.game).findPath(from, to) ?? [];
+    let finder = tilePathFinders.get(this.game);
+    if (finder === undefined) {
+      finder = PathFinding.Rail(
+        this.game,
+        this.game.config().isRealBorders()
+          ? REAL_BORDERS_RAIL_MAX_ITERATIONS
+          : undefined,
+      );
+      tilePathFinders.set(this.game, finder);
+    }
+    return finder.findPath(from, to) ?? [];
   }
 
   findStationsPath(from: TrainStation, to: TrainStation): TrainStation[] {
@@ -109,6 +125,12 @@ export function createRailNetwork(game: Game): RailNetwork {
   const pathService = new RailPathFinderServiceImpl(game);
   return new RailNetworkImpl(game, stationManager, pathService);
 }
+
+// Real-borders maps are large enough that a search with no route (another
+// continent) would otherwise scan up to the 500k default before giving up.
+// Routes within the railroad length limit are found well below this.
+const REAL_BORDERS_RAIL_MAX_ITERATIONS = 20_000;
+const REAL_BORDERS_MAX_CONNECTION_ATTEMPTS = 5;
 
 export class RailNetworkImpl implements RailNetwork {
   private maxConnectionDistance: number = 4;
@@ -360,7 +382,9 @@ export class RailNetworkImpl implements RailNetwork {
     const editedClusters = new Set<Cluster>();
     neighbors.sort((a, b) => a.distSquared - b.distSquared);
 
+    let attempts = 0;
     for (const neighbor of neighbors) {
+      if (attempts >= this.maxConnectionAttempts()) break;
       if (neighbor.unit === station.unit) continue;
       const neighborStation = this._stationManager.findStation(neighbor.unit);
       if (!neighborStation) continue;
@@ -380,6 +404,7 @@ export class RailNetworkImpl implements RailNetwork {
         connectionAvailable &&
         neighbor.distSquared > this.game.config().trainStationMinRange() ** 2
       ) {
+        attempts++;
         if (this.connect(station, neighborStation)) {
           neighborCluster.addStation(station);
           editedClusters.add(neighborCluster);
@@ -395,6 +420,15 @@ export class RailNetworkImpl implements RailNetwork {
       const newCluster = new Cluster();
       newCluster.addStation(station);
     }
+  }
+
+  // A real-borders start places thousands of stations at once. Most paths to
+  // a station across water fail only after searching a whole island, so each
+  // station tries just its closest candidates.
+  private maxConnectionAttempts(): number {
+    return this.game.config().isRealBorders()
+      ? REAL_BORDERS_MAX_CONNECTION_ATTEMPTS
+      : Infinity;
   }
 
   private disconnectFromNetwork(station: TrainStation) {

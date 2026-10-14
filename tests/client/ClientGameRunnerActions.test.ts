@@ -1,5 +1,5 @@
 import { TileRef } from "@openfront/engine-api/game/GameMap";
-import { UnitType } from "@openfront/engine-api/game/GameTypes";
+import { PlayerType, UnitType } from "@openfront/engine-api/game/GameTypes";
 import { EventBus } from "@openfront/shared/EventBus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -72,6 +72,8 @@ import {
   LobbyConfig,
 } from "../../src/client/ClientGameRunner";
 import {
+  CloseViewEvent,
+  CountryPickEvent,
   DoRequestAllianceEvent,
   DoTargetPlayerEvent,
   MouseMoveEvent,
@@ -95,6 +97,8 @@ function makeRunner(overrides: {
   playerByClientID?: () => unknown;
   actions?: Record<string, unknown>;
   boatDistSquared?: number;
+  realBorders?: boolean;
+  owner?: unknown;
 }) {
   const eventBus = new EventBus();
   const myPlayer = {
@@ -102,14 +106,19 @@ function makeRunner(overrides: {
     troops: () => 100,
   };
   const gameView = {
-    config: () => ({ isRandomSpawn: () => false, isReplay: () => false }),
+    config: () => ({
+      isRandomSpawn: () => false,
+      isRealBorders: () => overrides.realBorders ?? false,
+      isReplay: () => false,
+      mapScale: () => (overrides.realBorders ? 2.5 : 1),
+    }),
     inSpawnPhase: () => overrides.inSpawnPhase ?? false,
     myPlayer: () => null,
     isValidCoord: () => true,
     ref: () => TILE,
     isLand: () => true,
     hasOwner: () => overrides.hasOwner ?? false,
-    owner: () => ({ id: () => "enemy1" }),
+    owner: () => overrides.owner ?? { id: () => "enemy1" },
     playerByClientID: vi.fn(overrides.playerByClientID ?? (() => myPlayer)),
     euclideanDistSquared: () => overrides.boatDistSquared ?? 0,
   };
@@ -150,6 +159,54 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("real borders click", () => {
+  const nation = {
+    id: () => "enemy1",
+    smallID: () => 42,
+    name: () => "United States",
+    type: () => PlayerType.Nation,
+    isPlayer: () => true,
+  };
+
+  it("picks a roster country instead of sending a spawn intent", () => {
+    const { eventBus } = makeRunner({
+      inSpawnPhase: true,
+      hasOwner: true,
+      realBorders: true,
+      owner: nation,
+    });
+    const picks: CountryPickEvent[] = [];
+    const spawns: SendSpawnIntentEvent[] = [];
+    eventBus.on(CountryPickEvent, (e) => picks.push(e));
+    eventBus.on(SendSpawnIntentEvent, (e) => spawns.push(e));
+
+    eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y));
+
+    expect(picks.map((e) => e.smallID)).toEqual([42]);
+    expect(spawns).toHaveLength(0);
+  });
+
+  it("closes the country card on unowned land during the spawn phase", () => {
+    const { eventBus } = makeRunner({
+      inSpawnPhase: true,
+      realBorders: true,
+      owner: { isPlayer: () => false },
+    });
+    const picks: CountryPickEvent[] = [];
+    const closes: CloseViewEvent[] = [];
+    const spawns: SendSpawnIntentEvent[] = [];
+    eventBus.on(CountryPickEvent, (e) => picks.push(e));
+    eventBus.on(CloseViewEvent, (e) => closes.push(e));
+    eventBus.on(SendSpawnIntentEvent, (e) => spawns.push(e));
+
+    eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y));
+
+    expect(picks).toHaveLength(0);
+    expect(closes).toHaveLength(1);
+    expect(spawns).toHaveLength(0);
+  });
 });
 
 describe("left click", () => {
@@ -238,6 +295,25 @@ describe("auto boat", () => {
     await flushPromises();
 
     expect(boats).toHaveLength(0);
+  });
+
+  it("auto-boat distance limit scales with the map in real borders", async () => {
+    const boatsAt = async (distance: number) => {
+      const { eventBus } = makeRunner({
+        realBorders: true,
+        hasOwner: true,
+        actions: boatActions,
+        boatDistSquared: distance * distance,
+      });
+      const boats: SendBoatAttackIntentEvent[] = [];
+      eventBus.on(SendBoatAttackIntentEvent, (e) => boats.push(e));
+      eventBus.emit(new MouseUpEvent(CLICK.x, CLICK.y));
+      await flushPromises();
+      return boats.length;
+    };
+
+    expect(await boatsAt(249)).toBe(1);
+    expect(await boatsAt(250)).toBe(0);
   });
 });
 

@@ -23,7 +23,10 @@ import {
   type GameUpdateViewData,
 } from "@openfront/engine-api/game/GameUpdates";
 import { computeAllianceClusters } from "../render/frame/derive/AllianceClusters";
-import { extractNukeTelegraphs } from "../render/frame/derive/NukeTelegraphs";
+import {
+  extractNukeTelegraphs,
+  type NukeMagnitudeOf,
+} from "../render/frame/derive/NukeTelegraphs";
 import { computePlayerStatus } from "../render/frame/derive/PlayerStatus";
 import { buildRelationMatrix } from "../render/frame/derive/RelationMatrix";
 import { RailroadCache } from "../render/frame/RailroadCache";
@@ -52,6 +55,7 @@ import { RailroadEventKind } from "./codec/ReplayTypes";
 export interface ReplayRules {
   allianceDuration: number;
   doomsdayClockWarnTicks: number;
+  nukeMagnitudes: NukeMagnitudeOf;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -234,6 +238,7 @@ export class ReplayFrameBuilder {
     fd.nukeTelegraphs = extractNukeTelegraphs(
       f.units,
       this.header.mapWidth,
+      this.rules.nukeMagnitudes,
       0,
       fd.relationMatrix,
       fd.relationSize,

@@ -26,7 +26,11 @@ import {
   GameUpdate,
   GameUpdateType,
 } from "@openfront/engine-api/game/GameUpdates";
-import { UnitPredicate } from "@openfront/engine-api/game/ReadViews";
+import {
+  PlayerLike,
+  UnitPredicate,
+} from "@openfront/engine-api/game/ReadViews";
+import { chokepointsFor } from "@openfront/engine-api/resources/Chokepoints";
 import {
   AllPlayersStats,
   ClientID,
@@ -44,6 +48,7 @@ import {
 } from "@openfront/engine-lib/game/TeamAssignment";
 import { TerraNulliusImpl } from "@openfront/engine-lib/game/TerraNulliusImpl";
 import { UnitGrid } from "@openfront/engine-lib/game/UnitGrid";
+import { PseudoRandom } from "@openfront/engine-lib/PseudoRandom";
 import {
   readVersioned,
   snapshotType,
@@ -55,6 +60,7 @@ import {
 import { simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { EngineConfig } from "../configuration/EngineConfig";
+import { NationCoalitionBehavior } from "../execution/nation/NationCoalitionBehavior";
 import {
   SharedWaterCache,
   SharedWaterCacheSnapshot,
@@ -62,6 +68,19 @@ import {
 import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathFinder } from "../pathfinding/types";
+import { chokepointController } from "../realism/ChokepointToll";
+import { seedStartingRelations } from "../realism/RealisticWorld";
+import {
+  allNodeIds,
+  canPurchase,
+  canPurchaseTech as canPurchaseTechNode,
+  CAP_TOTAL_RANKS,
+  computeMultipliers,
+  IDENTITY_MULTIPLIERS,
+  nodeById,
+  TechMultipliers,
+  TechTreeSnapshot,
+} from "../realism/TechTree";
 import {
   nationData,
   NationSchema,
@@ -118,6 +137,9 @@ export function createGame(
 
 export type CellString = string;
 
+// Realistic World treaties never reach their expiry within a game.
+const TREATY_ALLIANCE_TICKS = 1_000_000_000;
+
 export class GameImpl implements Game {
   private _ticks = 0;
   private startTick: number | null = null;
@@ -159,6 +181,15 @@ export class GameImpl implements Game {
   private shipStaggers = { tradeShip: 0, transportShip: 0 };
   private _nationMirvTargets = new Map<PlayerID, Tick>();
 
+  /**
+   * Realistic World tech tree: owned tech-node ids per player, keyed by smallID
+   * (the fixed roster order). Game-level state so it snapshots deterministically
+   * without touching per-player schemas. Empty in classic mode.
+   */
+  private _techRanks = new Map<number, string[]>();
+  /** Memo of computeMultipliers per smallID; dropped on every rank change. */
+  private _techMultipliers = new Map<number, TechMultipliers>();
+
   private _isPaused: boolean = false;
   private _winner: Player | Team | null = null;
   private _waterManager: WaterManager;
@@ -193,11 +224,17 @@ export class GameImpl implements Game {
     );
     this._sharedWaterCache = new SharedWaterCache(this);
 
+    // Wire the tech-tree multiplier lookup so EngineConfig's per-player effects
+    // (troop regen, gold income, structure cost, attack power) read this game's
+    // owned ranks. Reads are live, so spends take effect on the next read.
+    _config.setTechTreeProvider((player) => this.techMultipliersFor(player));
+
     if (!restoring) {
       if (_config.gameConfig().gameMode === GameMode.Team) {
         this.populateTeams();
       }
       this.addPlayers();
+      this.seedRealisticRelations();
     }
 
     console.log(
@@ -451,6 +488,21 @@ export class GameImpl implements Game {
     return ar;
   }
 
+  seedTreatyAlliance(a: Player, b: Player): void {
+    if (this._config.disableAlliances()) return;
+    if (!a.isAlive() || !b.isAlive() || a.isAlliedWith(b)) return;
+    const alliance = new AllianceImpl(
+      this,
+      a as PlayerImpl,
+      b as PlayerImpl,
+      this._ticks,
+      this.nextAllianceID++,
+      this._ticks + TREATY_ALLIANCE_TICKS,
+    );
+    (a as PlayerImpl)._alliances.push(alliance);
+    (b as PlayerImpl)._alliances.push(alliance);
+  }
+
   acceptAllianceRequest(request: AllianceRequestImpl) {
     this.allianceRequests = this.allianceRequests.filter(
       (ar) => ar !== request,
@@ -541,6 +593,11 @@ export class GameImpl implements Game {
   executeNextTick(): GameUpdates {
     this.updates = createGameUpdatesMap();
     this.tileUpdatePairs.length = 0;
+    // Nations' default tech-tree spending (Realistic World only), trickled out
+    // on an interval. Deterministic with respect to game state.
+    if (this._ticks > 0 && this._ticks % GameImpl.TECH_POLICY_INTERVAL === 0) {
+      this.applyNationTechPolicy();
+    }
     this.execs.forEach((e) => {
       if (
         (!this.inSpawnPhase() || e.activeDuringSpawnPhase()) &&
@@ -742,6 +799,22 @@ export class GameImpl implements Game {
     this.nextPlayerID++;
     this._players.set(playerInfo.id, player);
     return player;
+  }
+
+  /**
+   * Realistic World mode: seed nation-to-nation starting relations so early
+   * diplomacy mirrors the real world (who is allied, who is hostile). No-op in
+   * any other mode. Runs once after every player is added; seeded relations
+   * decay back toward neutral over time like any other relation. Real borders
+   * seeds later, once the human has claimed a country.
+   */
+  private seedRealisticRelations(): void {
+    if (!this._config.isRealisticWorld() || this._config.isRealBorders()) {
+      return;
+    }
+    seedStartingRelations(
+      [...this._players.values()].filter((p) => p.type() === PlayerType.Nation),
+    );
   }
 
   private maybeAssignTeam(player: PlayerInfo): Team | null {
@@ -969,6 +1042,38 @@ export class GameImpl implements Game {
     const recipient = alliance.recipient() as PlayerImpl;
     requestor._alliances = requestor._alliances.filter((a) => a !== alliance);
     recipient._alliances = recipient._alliances.filter((a) => a !== alliance);
+  }
+
+  /**
+   * section 8.6 coalition war declaration (Realistic World only): `initiator`
+   * proposes a war on `target`; each friendly `candidate` that votes YES joins
+   * - becoming Hostile with the target and auto-sanctioning it (ties section 8.4).
+   * Returns the members who joined. Deterministic; bots decide via
+   * NationCoalitionBehavior.
+   */
+  declareCoalitionWar(
+    initiator: Player,
+    target: Player,
+    candidates: Player[],
+  ): Player[] {
+    if (!this._config.isRealisticWorld()) return [];
+    const joined: Player[] = [];
+    const random = new PseudoRandom(
+      simpleHash(initiator.id()) + simpleHash(target.id()),
+    );
+    for (const c of candidates) {
+      if (c === initiator || c === target) continue;
+      if (!initiator.isFriendly(c)) continue; // only allies tag along
+      if (c.isFriendly(target)) continue; // never join a war on a friend
+      if (
+        new NationCoalitionBehavior(random, this, c).voteYes(initiator, target)
+      ) {
+        c.updateRelation(target, -100); // hostile to the target
+        c.addEmbargo(target, false); // auto-sanction (8.4)
+        joined.push(c);
+      }
+    }
+    return joined;
   }
 
   public isSpawnImmunityActive(): boolean {
@@ -1441,6 +1546,117 @@ export class GameImpl implements Game {
   sharedWaterComponents(player: Player): Set<number> | null {
     return this._sharedWaterCache.get(player);
   }
+  // --- Realistic World tech tree ---
+
+  private techRanksFor(player: Player): string[] {
+    const ranks = this._techRanks.get(player.smallID());
+    return ranks ?? [];
+  }
+
+  /** The deterministic multipliers for a player, or identity outside realism. */
+  private techMultipliersFor(player: PlayerLike): TechMultipliers {
+    if (!this._config.isRealisticWorld()) return IDENTITY_MULTIPLIERS;
+    const cached = this._techMultipliers.get(player.smallID());
+    if (cached !== undefined) return cached;
+    const ranks = this._techRanks.get(player.smallID());
+    const m =
+      ranks === undefined || ranks.length === 0
+        ? IDENTITY_MULTIPLIERS
+        : computeMultipliers(new Set(ranks));
+    this._techMultipliers.set(player.smallID(), m);
+    return m;
+  }
+
+  ownedTechNodeIds(player: Player): readonly string[] {
+    return this.techRanksFor(player).slice();
+  }
+
+  canPurchaseTech(player: Player, nodeId: string): boolean {
+    if (!this._config.isRealisticWorld()) return false;
+    return canPurchaseTechNode(
+      nodeId,
+      this.techRanksFor(player),
+      player.gold(),
+    );
+  }
+
+  /**
+   * Per-game, permanent tech purchase (no refunds). Deterministic and gated
+   * behind Realistic World. Returns false and changes nothing when the tree is
+   * off or the purchase is not valid.
+   */
+  spendTech(player: Player, nodeId: string): boolean {
+    if (!this._config.isRealisticWorld()) return false;
+    const owned = new Set(this.techRanksFor(player));
+    if (!canPurchase(owned, nodeId)) return false;
+    const node = nodeById(nodeId);
+    if (node === undefined) return false;
+    const cost = BigInt(node.cost);
+    if (player.gold() < cost) return false;
+
+    this.spendTechInternal(player, nodeId);
+    return true;
+  }
+
+  /**
+   * Nations' default tech-spend policy (Realistic World only). A simple,
+   * deterministic heuristic so bot nations actually use the tree instead of
+   * letting gold idle. Rich nations (>= RICH_GOLD_THRESHOLD) build the ECONOMY
+   * budget first (it funds the rest); the rest build MILITARY staying-power
+   * first. Within the chosen branch they complete tiers in order (cheapest
+   * affordable unlocked first). Same on every client because it reads only
+   * deterministic state (gold, owned ranks). One purchase per nation per policy
+   * tick, so spending trickles out rather than dumping instantly.
+   */
+  private static readonly TECH_POLICY_INTERVAL = 100; // ~10s
+  private static readonly RICH_GOLD_THRESHOLD = 200_000n;
+
+  private applyNationTechPolicy(): void {
+    if (!this._config.isRealisticWorld() || this.inSpawnPhase()) return;
+    const nations = [...this._players.values()]
+      .filter((p) => p.type() === PlayerType.Nation)
+      .sort((a, b) => a.smallID() - b.smallID());
+    for (const nation of nations) {
+      if (!nation.isAlive()) continue;
+      const economyFirst = nation.gold() >= GameImpl.RICH_GOLD_THRESHOLD;
+      const branches = economyFirst
+        ? (["economy", "military"] as const)
+        : (["military", "economy"] as const);
+      const owned = new Set(this.techRanksFor(nation));
+      if (owned.size >= CAP_TOTAL_RANKS) continue;
+      let bought = false;
+      for (const branch of branches) {
+        if (bought) break;
+        for (const id of allNodeIds()) {
+          const node = nodeById(id);
+          if (node === undefined || node.branch !== branch) continue;
+          if (!canPurchase(owned, id)) continue;
+          if (nation.gold() < BigInt(node.cost)) continue;
+          this.spendTechInternal(nation, id);
+          owned.add(id);
+          bought = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /** Deducts the node cost and records the rank; callers validate first. */
+  private spendTechInternal(player: Player, nodeId: string): void {
+    const node = nodeById(nodeId)!;
+    player.removeGold(BigInt(node.cost));
+    const ranks = this.techRanksFor(player);
+    ranks.push(nodeId);
+    this._techRanks.set(player.smallID(), ranks);
+    this._techMultipliers.delete(player.smallID());
+  }
+
+  /** Deterministic snapshot of the tech tree, sorted by smallID. */
+  private techSnapshot(): { entries: [number, string[]][] } {
+    const entries = [...this._techRanks.entries()].sort((a, b) => a[0] - b[0]);
+    return { entries };
+  }
+
   /**
    * Game-level state for a snapshot. Taken at a tick boundary, so the
    * per-tick update buffers (updates, tile pairs, player and attack quads,
@@ -1490,6 +1706,7 @@ export class GameImpl implements Game {
         this._sharedWaterCache.snapshot(w),
       ),
       stats: w.versioned(StatsSnapshot, (this._stats as StatsImpl).snapshot()),
+      tech: w.versioned(TechTreeSnapshot, this.techSnapshot()),
     };
   }
 
@@ -1550,6 +1767,34 @@ export class GameImpl implements Game {
     (this._stats as StatsImpl).restoreSnapshot(
       readVersioned(StatsSnapshot, s.stats),
     );
+    this._techRanks = new Map(
+      readVersioned(TechTreeSnapshot, s.tech).entries.map(
+        ([smallID, ranks]) => [smallID, [...ranks]],
+      ),
+    );
+    this._techMultipliers.clear();
+    for (const p of this._players.values()) {
+      (p as PlayerImpl).incomingEmbargoes = 0;
+    }
+    for (const p of this._players.values()) {
+      for (const e of p.getEmbargoes()) {
+        if (!e.isTemporary) (e.target as PlayerImpl).incomingEmbargoes++;
+      }
+    }
+  }
+
+  chokepointControllers(): { id: string; controller: Player | null }[] {
+    if (!this._config.isRealisticWorld()) return [];
+    const zones = chokepointsFor(this.width(), this.height());
+    if (zones === null) return [];
+    return zones.map((cp) => ({
+      id: cp.id,
+      controller: chokepointController(this, cp),
+    }));
+  }
+
+  incomingEmbargoCount(target: Player): number {
+    return (target as PlayerImpl).incomingEmbargoes;
   }
 
   conquerPlayer(conqueror: Player, conquered: Player) {
@@ -1638,7 +1883,7 @@ export class GameImpl implements Game {
 
 export const GameSnapshot = snapshotType({
   name: "Game",
-  version: 1,
+  version: 2,
   schema: z.object({
     ticks: zInt(),
     startTick: zInt().nullable(),
@@ -1672,7 +1917,16 @@ export const GameSnapshot = snapshotType({
     water: VersionedSchema,
     sharedWaterCache: VersionedSchema,
     stats: VersionedSchema,
+    tech: VersionedSchema,
   }),
+  // v1 -> v2: the Realistic World tech tree gains a game-level `tech` record.
+  // Older games had no tech tree, so restore as empty.
+  migrations: {
+    1: (d: unknown) => {
+      const old = d as Record<string, unknown>;
+      return { ...old, tech: { v: 1, d: { entries: [] } } };
+    },
+  },
 });
 export type GameState = z.infer<typeof GameSnapshot.schema>;
 

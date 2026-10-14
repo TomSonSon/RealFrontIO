@@ -1,5 +1,8 @@
 import {
   Difficulty,
+  GameMapSize,
+  GameMapType,
+  GameMode,
   GameType,
   PlayerType,
   Tick,
@@ -7,17 +10,39 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
+import { REAL_WORLD_WIDTH } from "@openfront/engine-api/resources/RealWorldCountries";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import { pow } from "../DetMath";
 import { DoomsdayClockSpeed } from "../game/DoomsdayClock";
 import { assertNever } from "../Util";
+import {
+  REAL_BORDERS_CAP_FACTOR,
+  REAL_BORDERS_CITY_SHARE,
+  REAL_BORDERS_REGEN_MULT,
+  REAL_BORDERS_SEEDED_CITY_SHARE,
+  realBordersCountry,
+} from "./RealBordersStrength";
 
 export interface NukeMagnitude {
   inner: number;
   outer: number;
 }
 
+/** Width of the classic World map, the baseline the tile-distance tunables were tuned on. */
+const CLASSIC_MAP_WIDTH = 2000;
+
 const DEFAULT_SPAWN_IMMUNITY_TICKS = 5 * 10;
+const REAL_BORDERS_NATION_SPAWN_IMMUNITY_TICKS = 3 * 60 * 10;
+
+/** Real borders: Realistic World, Normal size, FFA, with the Realistic World modifier. */
+export function isRealBordersGame(gameConfig: GameConfig): boolean {
+  return (
+    gameConfig.publicGameModifiers?.isRealisticWorld === true &&
+    gameConfig.gameMap === GameMapType.RealisticWorld &&
+    gameConfig.gameMapSize === GameMapSize.Normal &&
+    gameConfig.gameMode === GameMode.FFA
+  );
+}
 
 /** SAM launcher construction duration in ticks (non-instant-build). */
 export const SAM_CONSTRUCTION_TICKS = 30 * 10;
@@ -86,12 +111,18 @@ const OVERTIME_DEFAULTS = {
 
 export class Config {
   private unitInfoCache = new Map<UnitType, UnitInfo>();
+  // Set eagerly so snapshots of the config compare equal on both sides.
+  private readonly _mapScale: number;
   constructor(
     protected _gameConfig: GameConfig,
     private _isReplay: boolean,
     public readonly listed: boolean = false,
     private _spectator: boolean = false,
-  ) {}
+  ) {
+    this._mapScale = isRealBordersGame(_gameConfig)
+      ? REAL_WORLD_WIDTH / CLASSIC_MAP_WIDTH
+      : 1;
+  }
 
   isReplay(): boolean {
     return this._isReplay;
@@ -149,7 +180,20 @@ export class Config {
     );
   }
   nationSpawnImmunityDuration(): Tick {
-    return DEFAULT_SPAWN_IMMUNITY_TICKS;
+    return this.isRealBorders()
+      ? REAL_BORDERS_NATION_SPAWN_IMMUNITY_TICKS
+      : DEFAULT_SPAWN_IMMUNITY_TICKS;
+  }
+  isRealBorders(): boolean {
+    return isRealBordersGame(this._gameConfig);
+  }
+  /** Linear map scale against the classic World map: 2.5 on Realistic World, else 1. */
+  mapScale(): number {
+    return this._mapScale;
+  }
+  /** Area scale against the classic World map: the square of mapScale(). */
+  mapAreaScale(): number {
+    return this.mapScale() * this.mapScale();
   }
   hasExtendedSpawnImmunity(): boolean {
     return this.spawnImmunityDuration() > DEFAULT_SPAWN_IMMUNITY_TICKS;
@@ -173,7 +217,7 @@ export class Config {
   }
 
   defensePostRange(): number {
-    return 30;
+    return 30 * this.mapScale();
   }
 
   isUnitDisabled(unitType: UnitType): boolean {
@@ -191,7 +235,7 @@ export class Config {
     );
   }
   isRandomSpawn(): boolean {
-    return this._gameConfig.randomSpawn;
+    return !this.isRealBorders() && this._gameConfig.randomSpawn;
   }
   infiniteTroops(): boolean {
     return this._gameConfig.infiniteTroops;
@@ -200,7 +244,7 @@ export class Config {
     return this._gameConfig.donateTroops;
   }
   trainStationMaxRange(): number {
-    return 110;
+    return 110 * this.mapScale();
   }
 
   unitInfo(type: UnitType): UnitInfo {
@@ -323,17 +367,46 @@ export class Config {
     return 200;
   }
 
+  private landTroops(tiles: number): number {
+    return 2 * (pow(tiles, 0.6) * 1000 + 50000);
+  }
+
   maxTroops(player: PlayerLike): number {
+    if (
+      player.type() === PlayerType.Human &&
+      this.hasInfiniteTroopsFor(player)
+    ) {
+      return 1_000_000_000;
+    }
+    const cityLevels = player
+      .units(UnitType.City)
+      .filter((u) => !u.isUnderConstruction())
+      .map((city) => city.level())
+      .reduce((a, b) => a + b, 0);
+    const country = this.isRealBorders()
+      ? realBordersCountry(player.realismKey())
+      : undefined;
+    if (country !== undefined) {
+      // Real borders: no difficulty scaling, so the cap is the same for a nation and a claimed human.
+      const landRatio =
+        this.landTroops(player.numTilesOwned()) /
+        this.landTroops(country.tiles);
+      if (country.seededCities === 0) {
+        return (
+          REAL_BORDERS_CAP_FACTOR * country.start * landRatio +
+          cityLevels * REAL_BORDERS_CITY_SHARE * country.start
+        );
+      }
+      // Seeded cities are free and numerous, so their share is split across them.
+      return (
+        country.start * landRatio +
+        (REAL_BORDERS_SEEDED_CITY_SHARE * country.start * cityLevels) /
+          country.seededCities
+      );
+    }
     const maxTroops =
-      player.type() === PlayerType.Human && this.hasInfiniteTroopsFor(player)
-        ? 1_000_000_000
-        : 2 * (pow(player.numTilesOwned(), 0.6) * 1000 + 50000) +
-          player
-            .units(UnitType.City)
-            .filter((u) => !u.isUnderConstruction())
-            .map((city) => city.level())
-            .reduce((a, b) => a + b, 0) *
-            this.cityTroopIncrease();
+      this.landTroops(player.numTilesOwned()) +
+      cityLevels * this.cityTroopIncrease();
 
     if (player.type() === PlayerType.Bot) {
       return maxTroops / 3;
@@ -388,36 +461,50 @@ export class Config {
       }
     }
 
+    if (this.isRealBorders() && toAdd > 0) {
+      toAdd *= REAL_BORDERS_REGEN_MULT;
+    }
+
     return Math.min(player.troops() + toAdd, max) - player.troops();
   }
 
   nukeMagnitudes(unitType: UnitType): NukeMagnitude {
+    const s = this.mapScale();
     switch (unitType) {
       case UnitType.MIRVWarhead:
-        return { inner: 12, outer: 18 };
+        return { inner: 12 * s, outer: 18 * s };
       case UnitType.AtomBomb:
-        return { inner: 12, outer: 30 };
+        return { inner: 12 * s, outer: 30 * s };
       case UnitType.HydrogenBomb:
-        return { inner: 80, outer: 100 };
+        return { inner: 80 * s, outer: 100 * s };
     }
     throw new Error(`Unknown nuke type: ${unitType}`);
   }
 
   nukeAllianceBreakThreshold(): number {
-    return 100;
+    return 100 * this.mapAreaScale();
   }
 
   samRange(level: number): number {
     // rational growth function (level 1 = 70, level 5 just above hydro range, asymptotically approaches 150)
-    return this.maxSamRange() - 480 / (level + 5);
+    return this.maxSamRange() - (480 * this.mapScale()) / (level + 5);
   }
 
   maxSamRange(): number {
-    return 150;
+    return 150 * this.mapScale();
   }
 
   structureMinDist(): number {
-    return 15;
+    return 15 * this.mapScale();
+  }
+
+  defaultNukeTargetableRange(): number {
+    return 150 * this.mapScale();
+  }
+
+  /** Lowest altitude of a nuke's parabolic trajectory, in tiles. */
+  parabolaMinHeight(): number {
+    return 50 * this.mapScale();
   }
 
   /** Max-health boost per veterancy level, as an integer percent of base max

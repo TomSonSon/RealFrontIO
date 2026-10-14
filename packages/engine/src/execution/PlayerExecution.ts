@@ -8,13 +8,17 @@ import {
 import { zInt, zPlayerRef } from "@openfront/engine-lib/snapshot/SnapshotType";
 import { getMode, simpleHash } from "@openfront/engine-lib/Util";
 import { z } from "zod";
-import { EngineConfig } from "../configuration/EngineConfig";
+import {
+  coalitionSanctionPercent,
+  EngineConfig,
+} from "../configuration/EngineConfig";
 import { Execution, Game, Player } from "../game/Game";
 import {
   bumpTraversalGeneration,
   tileTraversalScratch,
   TileTraversalScratch,
 } from "../game/TileTraversalScratch";
+import { isHomeCluster } from "../realism/RealBordersPolicy";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type {
   ExecRecord,
@@ -126,7 +130,8 @@ export class PlayerExecution implements Execution {
 
     const troopInc = this.config.troopIncreaseRate(this.player);
     this.player.addTroops(troopInc);
-    const goldFromWorkers = this.config.goldAdditionRate(this.player);
+    const baseGold = this.config.goldAdditionRate(this.player);
+    const goldFromWorkers = this.coalitionSanctionedGold(baseGold);
     this.player.addGold(goldFromWorkers);
 
     // Record stats
@@ -164,6 +169,24 @@ export class PlayerExecution implements Execution {
     }
   }
 
+  /**
+   * Coalition sanctions (Realistic World only): a target's passive income is
+   * reduced the more other players embargo it (isolation / coalition pressure).
+   * Classic mode returns the base rate unchanged.
+   */
+  private coalitionSanctionedGold(base: bigint): bigint {
+    if (!this.config.isRealisticWorld()) return base;
+    const senders = this.mg.incomingEmbargoCount(this.player);
+    if (senders === 0) return base;
+    return (base * BigInt(coalitionSanctionPercent(senders))) / 100n;
+  }
+
+  // Real borders: the country's own starting land is never removed or annexed
+  // for being surrounded (Lesotho, single-tile exclaves). Conquered pockets are.
+  private isProtectedHomeCluster(cluster: readonly TileRef[]): boolean {
+    return this.config.isRealBorders() && isHomeCluster(this.player, cluster);
+  }
+
   private removeClusters() {
     // Perf: We fuse bounds calculations into the initial DFS flood, returning packed Int32Array bounds
     // instead of scanning every TileRef and allocating hundreds of Object {min, max} Cells.
@@ -187,7 +210,11 @@ export class PlayerExecution implements Execution {
         boxes[3],
       );
       const severedLand = this.severedLand(clusters[0], boxes, 0, null, null);
-      if (surroundedBy && !surroundedBy.isFriendly(this.player)) {
+      if (
+        surroundedBy &&
+        !surroundedBy.isFriendly(this.player) &&
+        !this.isProtectedHomeCluster(clusters[0])
+      ) {
         this.removeCluster(clusters[0]);
       }
       if (severedLand !== null) {
@@ -339,7 +366,9 @@ export class PlayerExecution implements Execution {
     let severed: SeveredCandidates | null = null;
     let open: SeveredCandidates | null = null;
     for (let i = 0; i < clusters.length; i++) {
-      if (i === largestIndex) continue;
+      if (i === largestIndex || this.isProtectedHomeCluster(clusters[i])) {
+        continue;
+      }
       const cluster = clusters[i];
       const idx = i * 4;
       const result = this.classifyCluster(
@@ -380,7 +409,11 @@ export class PlayerExecution implements Execution {
       open,
     );
 
-    if (surroundedBy && !surroundedBy.isFriendly(this.player)) {
+    if (
+      surroundedBy &&
+      !surroundedBy.isFriendly(this.player) &&
+      !this.isProtectedHomeCluster(largestCluster)
+    ) {
       this.removeCluster(largestCluster);
     }
     for (let i = 0; i < clusters.length; i++) {
@@ -1459,6 +1492,12 @@ export class PlayerExecution implements Execution {
     });
 
     this.player.removeAllAlliances();
+
+    if (this.config.isRealisticWorld()) {
+      for (const e of this.player.getEmbargoes()) {
+        this.player.stopEmbargo(e.target);
+      }
+    }
   }
 
   snapshot(w: SnapshotWriter): ExecRecord {

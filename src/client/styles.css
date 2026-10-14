@@ -107,7 +107,7 @@ body.in-game {
 /* An inline page (store, settings, leaderboard, ...) is a modal rendered in
    the content area: lock the document so it scrolls inside the modal, and
    stack body children in a column so the content area gets the height left
-   under the header-ad slot. */
+   under the header. */
 body.page-open {
   height: 100%;
   overflow: hidden;
@@ -754,4 +754,14 @@ unit-display .tutorial-highlight::after {
 
 .remove-player-btn:hover {
   background: #ef4444;
+}
+
+/* Solo-only build (see SoloOnly.ts): no online navigation or account menu. */
+body.solo-only [data-page="page-item-store"],
+body.solo-only [data-page="page-inventory"],
+body.solo-only [data-page="page-leaderboard"],
+body.solo-only [data-page="page-clan"],
+body.solo-only [data-page="page-news"],
+body.solo-only nav-account-menu {
+  display: none !important;
 }

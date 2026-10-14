@@ -44,6 +44,7 @@ import {
   sliderToNationsConfig,
   toOptionalNumber,
 } from "./utilities/GameConfigHelpers";
+import { realisticWorldApplies } from "./utilities/RealisticWorldToggle";
 
 import { terrainMapFileLoader } from "./TerrainMapFileLoader";
 
@@ -117,6 +118,7 @@ const DEFAULT_OPTIONS = {
   customAlliances: false,
   customAllianceMinutes: undefined as number | undefined,
   waterNukes: false,
+  realisticWorld: false,
   doomsdayClock: false,
   doomsdayClockSpeed: "normal" as DoomsdayClockSpeed,
   overtime: false,
@@ -206,6 +208,17 @@ export class SinglePlayerModal extends BaseModal {
   @state() private customAllianceMinutes: number | undefined =
     DEFAULT_OPTIONS.customAllianceMinutes;
   @state() private waterNukes: boolean = DEFAULT_OPTIONS.waterNukes;
+  @state() private realisticWorld: boolean = DEFAULT_OPTIONS.realisticWorld;
+  // Settings the Realistic World card overrides, restored when it is switched off.
+  private realWorldSaved: {
+    selectedMap: GameMapType;
+    useRandomMap: boolean;
+    gameMode: GameMode;
+    compactMap: boolean;
+    randomSpawn: boolean;
+    bots: number;
+    nations: number;
+  } | null = null;
   @state() private doomsdayClock: boolean = DEFAULT_OPTIONS.doomsdayClock;
   @state() private doomsdayClockSpeed: DoomsdayClockSpeed =
     DEFAULT_OPTIONS.doomsdayClockSpeed;
@@ -496,6 +509,9 @@ export class SinglePlayerModal extends BaseModal {
             class="block"
             .sectionGapClass=${"space-y-6"}
             .settings=${{
+              realWorldMode: {
+                enabled: this.realisticWorld,
+              },
               map: {
                 selected: this.selectedMap,
                 useRandom: this.useRandomMap,
@@ -533,6 +549,7 @@ export class SinglePlayerModal extends BaseModal {
                   {
                     labelKey: "game_settings.random_spawn",
                     checked: this.randomSpawn,
+                    hidden: this.realisticWorld,
                   },
                   {
                     labelKey: "game_settings.infinite_gold",
@@ -545,6 +562,7 @@ export class SinglePlayerModal extends BaseModal {
                   {
                     labelKey: "game_settings.compact_map",
                     checked: this.compactMap,
+                    hidden: this.realisticWorld,
                   },
                   {
                     labelKey: "game_settings.water_nukes",
@@ -573,6 +591,7 @@ export class SinglePlayerModal extends BaseModal {
             @bots-changed=${this.handleBotsChange}
             @nations-changed=${this.handleNationsChange}
             @option-toggle-changed=${this.handleConfigOptionToggleChanged}
+            @real-world-mode-toggled=${this.handleConfigRealWorldModeToggled}
             @unit-toggle-changed=${this.handleConfigUnitToggleChanged}
           ></game-config-settings>
         </div>
@@ -619,6 +638,7 @@ export class SinglePlayerModal extends BaseModal {
       this.customAlliances !== DEFAULT_OPTIONS.customAlliances ||
       this.customAllianceMinutes !== DEFAULT_OPTIONS.customAllianceMinutes ||
       this.waterNukes !== DEFAULT_OPTIONS.waterNukes ||
+      this.realisticWorld !== DEFAULT_OPTIONS.realisticWorld ||
       this.doomsdayClock !== DEFAULT_OPTIONS.doomsdayClock ||
       // Pace only matters when the mode is on (startGame drops it when off).
       (this.doomsdayClock &&
@@ -695,13 +715,21 @@ export class SinglePlayerModal extends BaseModal {
     this.customAlliances = DEFAULT_OPTIONS.customAlliances;
     this.customAllianceMinutes = DEFAULT_OPTIONS.customAllianceMinutes;
     this.waterNukes = DEFAULT_OPTIONS.waterNukes;
+    this.realisticWorld = DEFAULT_OPTIONS.realisticWorld;
+    this.realWorldSaved = null;
     this.doomsdayClock = DEFAULT_OPTIONS.doomsdayClock;
     this.doomsdayClockSpeed = DEFAULT_OPTIONS.doomsdayClockSpeed;
     this.overtime = DEFAULT_OPTIONS.overtime;
     this.overtimeStartMinutes = DEFAULT_OPTIONS.overtimeStartMinutes;
   }
 
-  protected onOpen(): void {
+  protected onOpen(args?: Record<string, unknown>): void {
+    // The URL router passes args back as strings, hence the String().
+    if (args && "realisticWorld" in args) {
+      const realistic = String(args.realisticWorld) === "true";
+      if (realistic && !this.realisticWorld) void this.enableRealWorldMode();
+      if (!realistic && this.realisticWorld) void this.disableRealWorldMode();
+    }
     void this.loadNationCount();
     // Spend the cosmetics round trip while the player is picking a map, not
     // after they commit. startGame() still resolves cosmetics properly; this
@@ -765,6 +793,50 @@ export class SinglePlayerModal extends BaseModal {
       this.defaultNationCount,
       val,
     );
+  }
+
+  private handleConfigRealWorldModeToggled = (e: Event) => {
+    const customEvent = e as CustomEvent<{ enabled: boolean }>;
+    if (customEvent.detail.enabled) {
+      void this.enableRealWorldMode();
+    } else {
+      void this.disableRealWorldMode();
+    }
+  };
+
+  private async enableRealWorldMode() {
+    this.realWorldSaved = {
+      selectedMap: this.selectedMap,
+      useRandomMap: this.useRandomMap,
+      gameMode: this.gameMode,
+      compactMap: this.compactMap,
+      randomSpawn: this.randomSpawn,
+      bots: this.bots,
+      nations: this.nations,
+    };
+    this.realisticWorld = true;
+    this.selectedMap = GameMapType.RealisticWorld;
+    this.useRandomMap = false;
+    this.gameMode = GameMode.FFA;
+    this.compactMap = false;
+    this.randomSpawn = false;
+    this.bots = DEFAULT_OPTIONS.bots;
+    await this.loadNationCount();
+  }
+
+  private async disableRealWorldMode() {
+    const saved = this.realWorldSaved;
+    this.realisticWorld = false;
+    this.realWorldSaved = null;
+    if (!saved) return;
+    this.selectedMap = saved.selectedMap;
+    this.useRandomMap = saved.useRandomMap;
+    this.gameMode = saved.gameMode;
+    this.compactMap = saved.compactMap;
+    this.randomSpawn = saved.randomSpawn;
+    this.bots = saved.bots;
+    await this.loadNationCount();
+    this.nations = saved.nations;
   }
 
   private handleConfigOptionToggleChanged = (e: Event) => {
@@ -1178,6 +1250,13 @@ export class SinglePlayerModal extends BaseModal {
                   ? { customAllianceDuration: this.customAllianceMinutes ?? 0 }
                   : {}),
                 ...(this.waterNukes ? { waterNukes: true } : {}),
+                ...(realisticWorldApplies(
+                  this.selectedMap,
+                  this.realisticWorld,
+                  this.compactMap ? GameMapSize.Compact : GameMapSize.Normal,
+                )
+                  ? { publicGameModifiers: { isRealisticWorld: true } }
+                  : {}),
                 ...(this.doomsdayClock
                   ? {
                       doomsdayClock: {

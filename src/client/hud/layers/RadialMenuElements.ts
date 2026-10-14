@@ -655,7 +655,7 @@ export const deleteUnitElement: MenuElement = {
           unit.markedForDeletion() === false &&
           Structures.has(unit.type()) &&
           params.game.manhattanDist(unit.tile(), params.tile) <=
-            DELETE_SELECTION_RADIUS,
+            DELETE_SELECTION_RADIUS * params.game.config().mapScale(),
       );
 
     return myUnits.length === 0;
@@ -682,7 +682,7 @@ export const deleteUnitElement: MenuElement = {
           unit.markedForDeletion() === false &&
           Structures.has(unit.type()) &&
           params.game.manhattanDist(unit.tile(), params.tile) <=
-            DELETE_SELECTION_RADIUS,
+            DELETE_SELECTION_RADIUS * params.game.config().mapScale(),
       );
 
     const closestUnit = findClosestBy(myUnits, (unit) =>

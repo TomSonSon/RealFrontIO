@@ -5,10 +5,14 @@
  *   - relation 1 (friendly): an ally or teammate owns it (via relation matrix)
  *   - relation 2 (enemy): everyone else, and everything in replay / spectator
  *     mode (no local player)
+ *
+ * Radii come from the injected lookup (Config.nukeMagnitudes), not constants.
  */
 
+import { UnitType } from "@openfront/engine-api/game/GameTypes";
 import { describe, expect, it } from "vitest";
 import {
+  type NukeMagnitudeOf,
   extractNukeTelegraphs,
   TELEGRAPH_ENEMY,
   TELEGRAPH_FRIENDLY,
@@ -25,6 +29,16 @@ import {
 } from "../../../../../src/client/render/types";
 
 const MAP_W = 100;
+
+// Stand-in for Config.nukeMagnitudes at a given mapScale (classic = 1).
+function magnitudesAt(mapScale: number): NukeMagnitudeOf {
+  return (unitType: UnitType) =>
+    unitType === UnitType.AtomBomb
+      ? { inner: 12 * mapScale, outer: 30 * mapScale }
+      : { inner: 80 * mapScale, outer: 100 * mapScale };
+}
+
+const CLASSIC = magnitudesAt(1);
 
 function ps(overrides: Partial<PlayerState> = {}): PlayerState {
   return {
@@ -100,8 +114,24 @@ function units(...us: UnitState[]): Map<number, UnitState> {
 
 describe("extractNukeTelegraphs", () => {
   it("computes target x/y and blast radii", () => {
-    const [t] = extractNukeTelegraphs(units(nuke({ targetTile: 305 })), MAP_W);
+    const [t] = extractNukeTelegraphs(
+      units(nuke({ targetTile: 305 })),
+      MAP_W,
+      CLASSIC,
+    );
     expect(t).toMatchObject({ x: 5, y: 3, innerRadius: 12, outerRadius: 30 });
+  });
+
+  it("takes radii from the config lookup in real borders (mapScale 2.5)", () => {
+    const [t] = extractNukeTelegraphs(
+      units(nuke({ targetTile: 305 })),
+      MAP_W,
+      magnitudesAt(2.5),
+    );
+    expect(t).toMatchObject({
+      innerRadius: 12 * 2.5,
+      outerRadius: 30 * 2.5,
+    });
   });
 
   it("skips inactive nukes, nukes without a target, and non-nuke units", () => {
@@ -112,6 +142,7 @@ describe("extractNukeTelegraphs", () => {
         nuke({ id: 3, unitType: UT_WARSHIP }),
       ),
       MAP_W,
+      CLASSIC,
     );
     expect(result).toHaveLength(0);
   });
@@ -121,6 +152,7 @@ describe("extractNukeTelegraphs", () => {
     const [t] = extractNukeTelegraphs(
       units(nuke({ ownerID: 1 })),
       MAP_W,
+      CLASSIC,
       1,
       rel.matrix,
       rel.size,
@@ -138,6 +170,7 @@ describe("extractNukeTelegraphs", () => {
     const [t] = extractNukeTelegraphs(
       units(nuke({ ownerID: 2 })),
       MAP_W,
+      CLASSIC,
       1,
       rel.matrix,
       rel.size,
@@ -159,6 +192,7 @@ describe("extractNukeTelegraphs", () => {
     const [t] = extractNukeTelegraphs(
       units(nuke({ ownerID: 2 })),
       MAP_W,
+      CLASSIC,
       1,
       rel.matrix,
       rel.size,
@@ -176,6 +210,7 @@ describe("extractNukeTelegraphs", () => {
     const [t] = extractNukeTelegraphs(
       units(nuke({ ownerID: 2 })),
       MAP_W,
+      CLASSIC,
       1,
       rel.matrix,
       rel.size,
@@ -184,7 +219,11 @@ describe("extractNukeTelegraphs", () => {
   });
 
   it("marks everything as enemy without a local player (replay/spectator)", () => {
-    const [t] = extractNukeTelegraphs(units(nuke({ ownerID: 1 })), MAP_W);
+    const [t] = extractNukeTelegraphs(
+      units(nuke({ ownerID: 1 })),
+      MAP_W,
+      CLASSIC,
+    );
     expect(t.relation).toBe(TELEGRAPH_ENEMY);
   });
 });

@@ -9,6 +9,7 @@ import { crazyGamesSDK } from "./CrazyGamesSDK";
 import type { DesktopSessionState, SessionFailureKind } from "./DesktopShell";
 import { desktopLinkGate, isDesktopShell } from "./DesktopShell";
 import { showInGameAlert } from "./InGameModal";
+import { SOLO_ONLY } from "./SoloOnly";
 import type { SteamTicketResult } from "./SteamSDK";
 import { steamSDK } from "./SteamSDK";
 import { generateCryptoRandomUUID, translateText } from "./Utils";
@@ -308,7 +309,7 @@ export async function logOut(allSessions: boolean = false): Promise<boolean> {
 //
 // Distinct from userMeResponse, which Main dispatches: account state lives
 // partly outside that event (the nav button's imperative avatar and its cached
-// profile, window.adsEnabled), so Main answers this by running the same
+// profile), so Main answers this by running the same
 // no-session path it runs at startup, which broadcasts userMeResponse itself.
 function announceLoggedOut(): void {
   document.dispatchEvent(
@@ -384,6 +385,7 @@ export function isSessionActive(sub: string): boolean {
 export async function userAuth(
   shouldRefresh: boolean = true,
 ): Promise<UserAuth> {
+  if (SOLO_ONLY) return false;
   try {
     const jwt = __jwt;
     if (!jwt) {

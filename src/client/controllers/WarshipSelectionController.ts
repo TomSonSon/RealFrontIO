@@ -149,7 +149,7 @@ export class WarshipSelectionController implements Controller {
           unit.isActive() &&
           unit.owner() === myPlayer &&
           this.game.manhattanDist(unit.tile(), clickRef) <=
-            WARSHIP_SELECTION_RADIUS,
+            WARSHIP_SELECTION_RADIUS * this.game.config().mapScale(),
       )
       .sort(
         (a, b) =>

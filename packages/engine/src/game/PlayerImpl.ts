@@ -56,6 +56,10 @@ import {
 } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import {
+  isRealismCountry,
+  realisticStartingScore,
+} from "../realism/RealisticWorld";
+import {
   newPlayerInfo,
   playerInfoData,
   PlayerInfoSchema,
@@ -131,6 +135,15 @@ Object.freeze(EMPTY_ATTACK_UPDATES);
 Object.freeze(EMPTY_ALLIANCE_VIEWS);
 Object.freeze(EMPTY_EMOJIS);
 
+/** Ticks of good behavior that win back one reputation point (~1 minute). */
+const REPUTATION_RECOVERY_TICKS = 600;
+/** Reputation lost per betrayal. */
+const BETRAYAL_REPUTATION_PENALTY = 40;
+/** Below this reputation no alliance can be formed, as sender or recipient. */
+const ALLIANCE_REPUTATION_FLOOR = -30;
+/** Per-tick step of relation decay. */
+const RELATION_DECAY_STEP = 0.05;
+
 export class PlayerImpl implements Player {
   public _lastTileChange: number = 0;
   // Bumped on every ownership change of one of this player's tiles (several
@@ -157,6 +170,8 @@ export class PlayerImpl implements Player {
   private _betrayalCount: number = 0;
 
   private embargoes = new Map<PlayerID, Embargo>();
+  /** Non-temporary embargoes other players hold against this one; rebuilt on restore by GameImpl. */
+  incomingEmbargoes = 0;
 
   public _borderTiles = new TileSet();
 
@@ -170,6 +185,10 @@ export class PlayerImpl implements Player {
     { version: number; count: number }
   >();
   private myUnitsOwnedMemo = new Map<
+    UnitType,
+    { version: number; owned: number }
+  >();
+  private myUnitsOwnedUnseededMemo = new Map<
     UnitType,
     { version: number; owned: number }
   >();
@@ -197,6 +216,7 @@ export class PlayerImpl implements Player {
   public _alliances: MutableAlliance[] = [];
 
   private _spawnTile: TileRef | undefined;
+  private _realismKey: string | null = null;
   private _isDisconnected = false;
   private _disconnectSnapshot: DisconnectSnapshot | null = null;
 
@@ -376,6 +396,8 @@ export class PlayerImpl implements Player {
     // PlayerUpdate every tick rather than only appearing in the game-end record.
     const deathStats = this.mg.stats().getPlayerStats(this);
 
+    const realistic = this.mg.config().isRealisticWorld();
+
     return {
       type: GameUpdateType.Player,
       clientID: this.clientID(),
@@ -383,6 +405,7 @@ export class PlayerImpl implements Player {
       displayName: this.displayName(),
       clanTag: this.clanTag(),
       nationFlag: this.nationFlag(),
+      realismKey: this._realismKey ?? undefined,
       id: this.id(),
       team: this.team() ?? undefined,
       smallID: this.smallID(),
@@ -416,7 +439,18 @@ export class PlayerImpl implements Player {
       betrayals: this._betrayalCount,
       lastDeleteUnitTick: this.lastDeleteUnitTick,
       isLobbyCreator: this.isLobbyCreator(),
+      techRanks: this.techRanksForUpdate(),
+      reputation: realistic ? this.reputation() : undefined,
+      embargoSenders: realistic
+        ? this.mg.incomingEmbargoCount(this)
+        : undefined,
+      allianceBlocked: realistic ? this.isAllianceBlacklisted() : undefined,
     };
+  }
+
+  private techRanksForUpdate(): string[] | undefined {
+    const ranks = this.mg.ownedTechNodeIds(this);
+    return ranks.length === 0 ? undefined : [...ranks];
   }
 
   smallID(): number {
@@ -564,6 +598,30 @@ export class PlayerImpl implements Player {
       }
     }
     this.myUnitsOwnedMemo.set(type, {
+      version: this._myUnitsVersion,
+      owned: total,
+    });
+    return total;
+  }
+
+  // unitsOwned() without the seeded starting structures. Prices count these
+  // against unitsConstructed, which never includes them.
+  unitsOwnedUnseeded(type: UnitType): number {
+    const memo = this.myUnitsOwnedUnseededMemo.get(type);
+    if (memo !== undefined && memo.version === this._myUnitsVersion) {
+      return memo.owned;
+    }
+    let total = 0;
+    for (const unit of this._units) {
+      if (unit.type() === type && !unit.isSeeded()) {
+        if (unit.isUnderConstruction()) {
+          total++;
+        } else {
+          total += unit.level();
+        }
+      }
+    }
+    this.myUnitsOwnedUnseededMemo.set(type, {
       version: this._myUnitsVersion,
       owned: total,
     });
@@ -750,6 +808,21 @@ export class PlayerImpl implements Player {
     return this._spawnTile;
   }
 
+  realismKey(): string {
+    if (this._realismKey !== null) return this._realismKey;
+    return this.type() === PlayerType.Nation
+      ? this.name()
+      : `human:${this.id()}`;
+  }
+
+  hasRealismKey(): boolean {
+    return this._realismKey !== null;
+  }
+
+  setRealismKey(key: string): void {
+    this._realismKey = key;
+  }
+
   incomingAllianceRequests(): AllianceRequest[] {
     return this.mg.allianceRequests.filter((ar) => ar.recipient() === this);
   }
@@ -827,6 +900,12 @@ export class PlayerImpl implements Player {
       return false;
     }
     if (this.isFriendly(other) || !this.isAlive()) {
+      return false;
+    }
+
+    // Realistic World: a player who has betrayed this game (reputation below
+    // the floor) can't be trusted to form NEW alliances - per-game only.
+    if (this.isAllianceBlacklisted()) {
       return false;
     }
 
@@ -929,6 +1008,30 @@ export class PlayerImpl implements Player {
     return this._betrayalCount;
   }
 
+  /**
+   * Per-game reliability (Realistic World only). Each betrayal costs 40 points,
+   * and one point is regained per REPUTATION_RECOVERY_TICKS since the latest
+   * betrayal, up to 0. Derived from the betrayal count and the traitor mark
+   * tick, so no new snapshot field is needed.
+   */
+  reputation(): number {
+    if (this._betrayalCount === 0) return 0;
+    const recovered = Math.floor(
+      (this.mg.ticks() - this.markedTraitorTick) / REPUTATION_RECOVERY_TICKS,
+    );
+    return Math.min(
+      0,
+      recovered - BETRAYAL_REPUTATION_PENALTY * this._betrayalCount,
+    );
+  }
+
+  isAllianceBlacklisted(): boolean {
+    return (
+      this.mg.config().isRealisticWorld() &&
+      this.reputation() < ALLIANCE_REPUTATION_FLOOR
+    );
+  }
+
   createAllianceRequest(recipient: Player): AllianceRequest | null {
     if (this.isAlliedWith(recipient)) {
       throw new Error(`cannot create alliance request, already allies`);
@@ -977,12 +1080,23 @@ export class PlayerImpl implements Player {
   }
 
   decayRelations() {
+    const realistic = this.mg.config().isRealisticWorld();
+    const withBlocs = this.mg.config().isRealBorders();
     this.relations.forEach((r: number, p: Player) => {
-      const sign = -1 * Math.sign(r);
-      const delta = 0.05;
+      // Realistic World: nation pairs settle at their real-world baseline.
+      const baseline =
+        realistic && isRealismCountry(this) && isRealismCountry(p)
+          ? (realisticStartingScore(
+              this.realismKey(),
+              p.realismKey(),
+              withBlocs,
+            ) ?? 0)
+          : 0;
+      const sign = -1 * Math.sign(r - baseline);
+      const delta = RELATION_DECAY_STEP;
       r += sign * delta;
-      if (Math.abs(r) < delta * 2) {
-        r = 0;
+      if (Math.abs(r - baseline) < delta * 2) {
+        r = baseline;
       }
       this.relations.set(p, r);
     });
@@ -1240,6 +1354,7 @@ export class PlayerImpl implements Player {
   addEmbargo(other: Player, isTemporary: boolean): void {
     const embargo = this.embargoes.get(other.id());
     if (embargo !== undefined && !embargo.isTemporary) return;
+    if (!isTemporary) (other as PlayerImpl).incomingEmbargoes++;
 
     this.mg.addUpdate({
       type: GameUpdateType.EmbargoEvent,
@@ -1256,6 +1371,9 @@ export class PlayerImpl implements Player {
   }
 
   stopEmbargo(other: Player): void {
+    if (this.embargoes.get(other.id())?.isTemporary === false) {
+      (other as PlayerImpl).incomingEmbargoes--;
+    }
     this.embargoes.delete(other.id());
     this.mg.addUpdate({
       type: GameUpdateType.EmbargoEvent,
@@ -1403,6 +1521,35 @@ export class PlayerImpl implements Player {
     }
 
     const cost = this.mg.unitInfo(type).cost(this.mg, this);
+    const b = this.addUnitInstance(type, spawnTile, params);
+    this.recordUnitConstructed(type);
+    this.removeGold(cost);
+    this.removeTroops("troops" in params ? (params.troops ?? 0) : 0);
+
+    return b;
+  }
+
+  /**
+   * A structure that already stood at game start (real borders). Built like
+   * buildUnit, but free and not counted in unitsConstructed, so the prices of
+   * later purchases match a game where it was never placed.
+   */
+  buildStartingUnit(type: UnitType, spawnTile: TileRef): Unit {
+    if (this.mg.config().isUnitDisabled(type)) {
+      throw new Error(
+        `Attempted to build disabled unit ${type} at tile ${spawnTile} by player ${this.name()}`,
+      );
+    }
+    const unit = this.addUnitInstance(type, spawnTile, {});
+    unit.markSeeded();
+    return unit;
+  }
+
+  private addUnitInstance<T extends UnitType>(
+    type: T,
+    spawnTile: TileRef,
+    params: UnitParams<T>,
+  ): UnitImpl {
     const b = new UnitImpl(
       type,
       this.mg,
@@ -1413,12 +1560,8 @@ export class PlayerImpl implements Player {
     );
     this._units.push(b);
     this._myUnitsVersion++;
-    this.recordUnitConstructed(type);
-    this.removeGold(cost);
-    this.removeTroops("troops" in params ? (params.troops ?? 0) : 0);
     this.mg.addUpdate(b.toUpdate());
     this.mg.addUnit(b);
-
     return b;
   }
 
@@ -1737,7 +1880,7 @@ export class PlayerImpl implements Player {
     if (this.mg.owner(tile) !== this) {
       return [];
     }
-    const searchRadius = 15;
+    const searchRadius = this.mg.config().structureMinDist();
     const searchRadiusSquared = searchRadius ** 2;
 
     const nearbyUnits = this.mg.nearbyUnits(
@@ -2033,6 +2176,7 @@ export class PlayerImpl implements Player {
       numUnitsConstructed: Object.entries(this.numUnitsConstructed).map(
         ([type, n]) => [type as UnitType, n],
       ),
+      realismKey: this._realismKey,
     };
   }
 
@@ -2070,6 +2214,7 @@ export class PlayerImpl implements Player {
     this.myUnitsMemo = new Map();
     this.myUnitCountMemo = new Map();
     this.myUnitsOwnedMemo = new Map();
+    this.myUnitsOwnedUnseededMemo = new Map();
     this.pastOutgoingAllianceRequests = s.pastOutgoingAllianceRequests.map(
       (i) => r.allianceRequest<AllianceRequest>(i),
     );
@@ -2106,13 +2251,14 @@ export class PlayerImpl implements Player {
         }
       : (box as null);
     this.numUnitsConstructed = Object.fromEntries(s.numUnitsConstructed);
+    this._realismKey = s.realismKey;
     this.nearbyMemo = null;
   }
 }
 
 export const PlayerSnapshot = snapshotType({
   name: "Player",
-  version: 1,
+  version: 2,
   schema: z.object({
     smallID: zInt(),
     info: PlayerInfoSchema,
@@ -2176,6 +2322,11 @@ export const PlayerSnapshot = snapshotType({
       .nullable()
       .optional(),
     numUnitsConstructed: z.array(z.tuple([UnitTypeSchema, zInt()])),
+    realismKey: z.string().nullable(),
   }),
+  migrations: {
+    // v1 had no realism key; players keep the default (their name).
+    1: (d) => ({ ...d, realismKey: null }),
+  },
 });
 export type PlayerState = z.infer<typeof PlayerSnapshot.schema>;

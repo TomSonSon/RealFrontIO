@@ -3,7 +3,7 @@ import { GameUpdateType } from "@openfront/engine-api/game/GameUpdates";
 import type { GameXpEligible, Progress } from "@openfront/shared/ApiSchemas";
 import { Pattern } from "@openfront/shared/CosmeticSchemas";
 import { EventBus } from "@openfront/shared/EventBus";
-import { html, LitElement, TemplateResult } from "lit";
+import { html, LitElement, nothing, TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import {
   DESKTOP_TUTORIAL_VIDEO_URL,
@@ -38,6 +38,7 @@ import {
   provisionalXpRules,
   reconcileXp,
 } from "../../ProvisionalXpAtDeath";
+import { SOLO_ONLY } from "../../SoloOnly";
 import { PlaySoundEffectEvent } from "../../sound/Sounds";
 import { steamSDK } from "../../SteamSDK";
 import { SendWinnerEvent } from "../../Transport";
@@ -346,6 +347,11 @@ export class WinModal extends LitElement implements Controller {
   }
 
   innerHtml() {
+    if (SOLO_ONLY) {
+      return !isInIframe() && !this.isWin && getGamesPlayed() < 3
+        ? this.renderYoutubeTutorial()
+        : nothing;
+    }
     // The Steam desktop build has nothing to wishlist — fall through to the
     // other promos so the box is never empty.
     const canWishlist = !steamSDK.isOnSteam();
@@ -502,6 +508,7 @@ export class WinModal extends LitElement implements Controller {
       this.game.config().gameConfig().rankedType !== undefined;
     this.isVisible = true;
     this.requestUpdate();
+    if (SOLO_ONLY) return;
     try {
       await this.loadPatternContent();
     } catch (error) {
@@ -537,7 +544,7 @@ export class WinModal extends LitElement implements Controller {
    * ends.
    */
   private async updateXp(gameOver: boolean): Promise<void> {
-    if (this.xpPolling) return;
+    if (SOLO_ONLY || this.xpPolling) return;
     // Normally here since the game started; tried again should that fetch
     // have failed.
     loadGameXpPanel();
@@ -698,7 +705,7 @@ export class WinModal extends LitElement implements Controller {
   }
 
   init() {
-    if (!this.game.config().isReplay()) loadGameXpPanel();
+    if (!SOLO_ONLY && !this.game.config().isReplay()) loadGameXpPanel();
   }
 
   tick() {

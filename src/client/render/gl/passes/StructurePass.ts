@@ -85,6 +85,7 @@ export class StructurePass {
   private uIconGrowZoom: WebGLUniformLocation;
   private uShapeScales: WebGLUniformLocation;
   private uIconFills: WebGLUniformLocation;
+  private uDotShapeScales: WebGLUniformLocation;
   private uGhostAlpha: WebGLUniformLocation;
   private uOutlineColor: WebGLUniformLocation;
   private uAltView: WebGLUniformLocation;
@@ -178,6 +179,10 @@ export class StructurePass {
     this.uIconGrowZoom = gl.getUniformLocation(this.program, "uIconGrowZoom")!;
     this.uShapeScales = gl.getUniformLocation(this.program, "uShapeScales")!;
     this.uIconFills = gl.getUniformLocation(this.program, "uIconFills")!;
+    this.uDotShapeScales = gl.getUniformLocation(
+      this.program,
+      "uDotShapeScales",
+    )!;
     this.uGhostAlpha = gl.getUniformLocation(this.program, "uGhostAlpha")!;
     this.uOutlineColor = gl.getUniformLocation(this.program, "uOutlineColor")!;
     this.uAltView = gl.getUniformLocation(this.program, "uAltView")!;
@@ -388,13 +393,16 @@ export class StructurePass {
     // Build per-structure uniform arrays from settings, ordered by atlas column
     const scales = new Float32Array(ATLAS_COLS);
     const fills = new Float32Array(ATLAS_COLS);
+    const dotScales = new Float32Array(ATLAS_COLS);
     for (let i = 0; i < STRUCTURE_ORDER.length; i++) {
       const cfg = ss.shapes[STRUCTURE_ORDER[i]];
       scales[i] = cfg?.scale ?? 1.0;
       fills[i] = cfg?.iconFill ?? 0.6;
+      dotScales[i] = cfg?.dotScale ?? 1.0;
     }
     gl.uniform1fv(this.uShapeScales, scales);
     gl.uniform1fv(this.uIconFills, fills);
+    gl.uniform1fv(this.uDotShapeScales, dotScales);
 
     gl.uniform1i(
       this.uAltView,

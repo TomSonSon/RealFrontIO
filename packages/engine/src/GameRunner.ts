@@ -27,6 +27,8 @@ import { simpleHash } from "@openfront/engine-lib/Util";
 import { EngineConfig } from "./configuration/EngineConfig";
 import { DoomsdayClockExecution } from "./execution/DoomsdayClockExecution";
 import { Executor } from "./execution/ExecutionManager";
+import { RealBordersInitExecution } from "./execution/RealBordersInitExecution";
+import { RealBordersStartExecution } from "./execution/RealBordersStartExecution";
 import { RecomputeRailClusterExecution } from "./execution/RecomputeRailClusterExecution";
 import { SpawnTimerExecution } from "./execution/SpawnTimerExecution";
 import { WinCheckExecution } from "./execution/WinCheckExecution";
@@ -152,6 +154,7 @@ export class GameRunner {
   // Name placements are recomputed periodically; a runner that starts
   // mid-game (restored from a snapshot) computes them on its first tick.
   private viewDataStale = true;
+  private lastChokepointKey: string | null = null;
 
   constructor(
     public game: Game,
@@ -177,16 +180,23 @@ export class GameRunner {
     if (this.game.config().gameConfig().gameType !== GameType.Singleplayer) {
       this.game.addExecution(new SpawnTimerExecution());
     }
-    if (this.game.config().spawnNations()) {
-      this.game.addExecution(...this.execManager.nationExecutions());
-    }
-    if (this.game.config().isRandomSpawn()) {
-      this.game.addExecution(...this.execManager.spawnPlayers());
-    }
-    if (this.game.config().bots() > 0) {
+    if (this.game.config().isRealBorders()) {
       this.game.addExecution(
-        ...this.execManager.spawnTribes(this.game.config().bots()),
+        new RealBordersInitExecution(),
+        new RealBordersStartExecution(this.execManager.gameID()),
       );
+    } else {
+      if (this.game.config().spawnNations()) {
+        this.game.addExecution(...this.execManager.nationExecutions());
+      }
+      if (this.game.config().isRandomSpawn()) {
+        this.game.addExecution(...this.execManager.spawnPlayers());
+      }
+      if (this.game.config().bots() > 0) {
+        this.game.addExecution(
+          ...this.execManager.spawnTribes(this.game.config().bots()),
+        );
+      }
     }
     this.game.addExecution(new WinCheckExecution());
     if (this.game.config().doomsdayClockConfig().enabled) {
@@ -270,6 +280,8 @@ export class GameRunner {
       viewDataChanged = true;
     }
 
+    const chokepoints = this.changedChokepoints();
+
     const packedTileUpdates = this.game.drainPackedTileUpdates();
     const packedMotionPlans = this.game.drainPackedMotionPlans();
     const packedPlayerUpdates = this.game.drainPackedPlayerUpdates();
@@ -285,6 +297,7 @@ export class GameRunner {
       ...(packedPlayerUpdates ? { packedPlayerUpdates } : {}),
       ...(packedAttackUpdates ? { packedAttackUpdates } : {}),
       ...(packedNukeImpacts ? { packedNukeImpacts } : {}),
+      ...(chokepoints ? { chokepoints } : {}),
       updates: updates,
       // A copy: hosts hold several ticks' updates before reading them, and
       // the record changes in place on later ticks.
@@ -296,6 +309,23 @@ export class GameRunner {
     });
     this.isExecuting = false;
     return true;
+  }
+
+  private changedChokepoints(): GameUpdateViewData["chokepoints"] {
+    if (this.lastChokepointKey !== null && this.game.ticks() % 30 !== 0) {
+      return undefined;
+    }
+    const next = this.game
+      .chokepointControllers()
+      .map((c) => ({ id: c.id, controller: c.controller?.smallID() ?? null }));
+    if (next.length === 0) {
+      this.lastChokepointKey = "";
+      return undefined;
+    }
+    const key = next.map((c) => `${c.id}:${c.controller}`).join(",");
+    if (key === this.lastChokepointKey) return undefined;
+    this.lastChokepointKey = key;
+    return next;
   }
 
   public pendingTurns(): number {

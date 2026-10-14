@@ -42,6 +42,7 @@ import {
   purchaseOutcomeMessage,
   startPurchase,
 } from "./Payments";
+import { SOLO_ONLY } from "./SoloOnly";
 import { STEAM_TIER_CHANGE_IN_APP } from "./SubscriptionPolicy";
 import { UserSettings } from "./UserSettings";
 import { translateText } from "./Utils";
@@ -853,6 +854,7 @@ export function invalidateCosmetics(): void {
 }
 
 export async function fetchCosmetics(): Promise<Cosmetics | null> {
+  if (SOLO_ONLY) return null;
   if (__cosmetics !== null) {
     return __cosmetics;
   }

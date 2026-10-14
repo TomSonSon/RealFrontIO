@@ -178,9 +178,9 @@ export class PathFinding {
     return PathFinding.Water(game);
   }
 
-  static Rail(game: Game): SteppingPathFinder<TileRef> {
+  static Rail(game: Game, maxIterations?: number): SteppingPathFinder<TileRef> {
     const miniMap = game.miniMap();
-    const pf = new AStarRail(miniMap);
+    const pf = new AStarRail(miniMap, maxIterations);
 
     return PathFinderBuilder.create(pf)
       .wrap((pf) => new MiniMapTransformer(pf, game.map(), miniMap))

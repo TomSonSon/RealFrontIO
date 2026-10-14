@@ -16,6 +16,7 @@ import {
 import { assertNever } from "@openfront/engine-lib/Util";
 import { z } from "zod";
 import { Game, Player, Unit } from "../../game/Game";
+import { canAiAttack } from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -90,7 +91,10 @@ export class NationWarshipBehavior {
       this.player.gold() > this.cost(UnitType.Warship)
     ) {
       const port = this.random.randElement(ports);
-      const targetTile = this.warshipSpawnTile(port.tile(), 250);
+      const targetTile = this.warshipSpawnTile(
+        port.tile(),
+        250 * this.game.config().mapScale(),
+      );
       if (targetTile === null) {
         return false;
       }
@@ -221,7 +225,7 @@ export class NationWarshipBehavior {
         target,
       );
       // Too close to deal with
-      if (distanceToTarget < 20) {
+      if (distanceToTarget < 20 * this.game.config().mapScale()) {
         this.dealtWithTransportShip.add(transport);
         continue;
       }
@@ -231,7 +235,7 @@ export class NationWarshipBehavior {
         if (
           this.game.hasUnitNearby(
             target,
-            90,
+            90 * this.game.config().mapScale(),
             UnitType.Warship,
             this.player.id(),
             true,
@@ -240,14 +244,18 @@ export class NationWarshipBehavior {
             const patrolTile = p.warshipState().patrolTile;
             return (
               patrolTile !== undefined &&
-              this.game.manhattanDist(target, patrolTile) < 90
+              this.game.manhattanDist(target, patrolTile) <
+                90 * this.game.config().mapScale()
             );
           }).length > 0
         ) {
           this.dealtWithTransportShip.add(transport);
           continue;
         }
-        const oceanTiles = this.warshipSpawnTile(target, 30);
+        const oceanTiles = this.warshipSpawnTile(
+          target,
+          30 * this.game.config().mapScale(),
+        );
         if (oceanTiles === null) continue;
         this.maybeRetaliateWithWarship(
           oceanTiles,
@@ -401,7 +409,8 @@ export class NationWarshipBehavior {
           return (
             patrolTile !== undefined &&
             // Dont send ships which are already traveling
-            this.game.manhattanDist(p.tile(), patrolTile) < 130
+            this.game.manhattanDist(p.tile(), patrolTile) <
+              this.game.config().warshipTargettingRange()
           );
         })
         .sort((a, b) => {
@@ -431,7 +440,7 @@ export class NationWarshipBehavior {
     }
 
     const target = this.findWarshipInfestationCounterTarget(isTeamGame);
-    if (target !== null) {
+    if (target !== null && canAiAttack(this.game, this.player, target.player)) {
       this.buildCounterWarship(target);
     }
   }

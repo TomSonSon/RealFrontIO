@@ -1,0 +1,51 @@
+import { GameMapSize, GameMapType } from "@openfront/engine-api/game/GameTypes";
+import { computeMultipliers } from "@openfront/engine-api/resources/TechNodes";
+import type { GameView, PlayerView } from "../view";
+
+// Realism only takes effect on the real world maps (World for the legacy
+// modifier, RealisticWorld for real borders), never on Compact size.
+export function realisticWorldApplies(
+  map: GameMapType,
+  enabled: boolean,
+  size: GameMapSize | undefined,
+): boolean {
+  return (
+    enabled &&
+    (map === GameMapType.World || map === GameMapType.RealisticWorld) &&
+    size !== GameMapSize.Compact
+  );
+}
+
+export function realisticWorldActive(game: GameView): boolean {
+  const gc = game.config().gameConfig();
+  return realisticWorldApplies(
+    gc.gameMap,
+    gc.publicGameModifiers?.isRealisticWorld === true,
+    gc.gameMapSize,
+  );
+}
+
+// The client Config lacks the engine-only troopRegen tech multiplier, so apply
+// it here. Mirrors the engine: only positive regen is scaled, and never past
+// the troop cap.
+export function techAdjustedTroopIncrease(
+  game: GameView,
+  player: PlayerView,
+): number {
+  const config = game.config();
+  const rate = config.troopIncreaseRate(player);
+  const gc = config.gameConfig();
+  if (
+    rate <= 0 ||
+    !realisticWorldApplies(
+      gc.gameMap,
+      gc.publicGameModifiers?.isRealisticWorld === true,
+      gc.gameMapSize,
+    )
+  ) {
+    return rate;
+  }
+  const { troopRegen } = computeMultipliers(new Set(player.techRanks()));
+  const room = Math.max(0, config.maxTroops(player) - player.troops());
+  return Math.min(rate * troopRegen, room);
+}

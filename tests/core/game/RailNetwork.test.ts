@@ -76,6 +76,7 @@ describe("RailNetworkImpl", () => {
       config: () => ({
         trainStationMaxRange: () => 80,
         trainStationMinRange: () => 10,
+        isRealBorders: () => false,
         railroadMaxSize: () => 100,
       }),
       x: vi.fn(() => 0),
@@ -171,6 +172,41 @@ describe("RailNetworkImpl", () => {
     // Both station should have their cluster reset to the merged one
     expect(station.setCluster).toHaveBeenCalled();
     expect(neighborStation.setCluster).toHaveBeenCalled();
+  });
+
+  describe("connection attempts per station", () => {
+    function crowdedNeighbors(count: number) {
+      const stations = new Map<unknown, any>();
+      const neighbors = Array.from({ length: count }, (_, i) => {
+        const neighbor = createMockStation(i + 10);
+        stations.set(neighbor.unit, neighbor);
+        return { unit: neighbor.unit, distSquared: 200 + i };
+      });
+      game.nearbyUnits.mockReturnValue(neighbors);
+      stationManager.findStation.mockImplementation((u: unknown) =>
+        stations.get(u),
+      );
+    }
+
+    test("an ordinary game tries every neighbor in range", () => {
+      pathService.findTilePath.mockReturnValue([]);
+      crowdedNeighbors(8);
+      network.connectStation(createMockStation(1));
+      expect(pathService.findTilePath).toHaveBeenCalledTimes(8);
+    });
+
+    test("real borders tries only the closest five, failed paths included", () => {
+      game.config = () => ({
+        trainStationMaxRange: () => 80,
+        trainStationMinRange: () => 10,
+        isRealBorders: () => true,
+        railroadMaxSize: () => 100,
+      });
+      pathService.findTilePath.mockReturnValue([]);
+      crowdedNeighbors(8);
+      network.connectStation(createMockStation(1));
+      expect(pathService.findTilePath).toHaveBeenCalledTimes(5);
+    });
   });
 
   describe("overlappingRailroads", () => {

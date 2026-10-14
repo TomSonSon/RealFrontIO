@@ -44,9 +44,9 @@ export class MirvExecution implements Execution {
 
   private nuke: Unit | null = null;
 
-  private range = 1500;
-  private rangeSquared = this.range * this.range;
-  private minimumSpread = 55;
+  private range: number;
+  private rangeSquared: number;
+  private minimumSpread: number;
   private warheadCount = 350;
 
   private static readonly MATH_SCALE = 100;
@@ -82,6 +82,9 @@ export class MirvExecution implements Execution {
   init(mg: Game, ticks: number): void {
     this.random = new PseudoRandom(mg.ticks() + simpleHash(this.player.id()));
     this.mg = mg;
+    this.range = mg.config().mirvRange();
+    this.rangeSquared = this.range * this.range;
+    this.minimumSpread = mg.config().mirvMinimumSpread();
     this.targetPlayer = this.mg.owner(this.dst);
     this.baseX = this.mg.x(this.dst);
     this.baseY = this.mg.y(this.dst);
@@ -117,7 +120,10 @@ export class MirvExecution implements Execution {
         }
       }
       const x = Math.floor((this.baseX + this.mg.x(this.nuke.tile())) / 2);
-      const y = Math.max(0, this.baseY - 500) + 50;
+      const config = this.mg.config();
+      const y =
+        Math.max(0, this.baseY - config.mirvSeparationHeight()) +
+        config.mirvSeparationHeightOffset();
       this.separateDst = this.mg.ref(x, y);
 
       this.speed = this.calculateDeterministicSpeed(
@@ -126,6 +132,7 @@ export class MirvExecution implements Execution {
       );
       this.pathFinder = UniversalPathFinding.Parabola(this.mg, {
         increment: this.speed,
+        minHeight: config.parabolaMinHeight(),
       });
 
       let result = this.pathFinder.next(
@@ -237,7 +244,7 @@ export class MirvExecution implements Execution {
         dst,
         this.separateDst,
         // order of extra speed assign does not matter, they all spawn at once.
-        warheadSpeed + speedOffset,
+        warheadSpeed + speedOffset * this.mg.config().mapScale(),
         waitBase + this.random.nextInt(0, 15),
       );
       this.warheadExecutions.push(execution);
@@ -321,11 +328,17 @@ export class MirvExecution implements Execution {
     // using base speed and uncapped curve, calculate ideal mirv flight ticks
     // prevents top of map shenanigans
     // Intentionally pass the clamped separateDst so timing matches the drawn physical arc exactly.
+    const minHeight = this.mg.config().parabolaMinHeight();
     const [iP0, iP1, iP2, iP3] = getParabolaControlPoints(
       this.mg,
       spawnTile,
       separateDst,
-      { distanceBasedHeight: true, directionUp: true, ignoreMapBounds: true },
+      {
+        distanceBasedHeight: true,
+        directionUp: true,
+        ignoreMapBounds: true,
+        minHeight,
+      },
     );
     const idealMirvLength = DistanceBasedBezierCurve.getLength(
       iP0,
@@ -368,6 +381,7 @@ export class MirvExecution implements Execution {
       this.mg,
       spawnTile,
       separateDst,
+      { minHeight },
     );
     const actualMirvLength = DistanceBasedBezierCurve.getLength(
       aP0,

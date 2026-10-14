@@ -33,6 +33,7 @@ const HUD_TAGS = [
   "graphics-settings-modal",
   "unit-display",
   "player-panel",
+  "country-picker",
   "chat-modal",
   "multi-tab-modal",
   "heads-up-message",
@@ -40,7 +41,6 @@ const HUD_TAGS = [
   "alert-frame",
   "spawn-timer",
   "immunity-timer",
-  "in-game-promo",
   "tutorial-panel",
 ] as const;
 

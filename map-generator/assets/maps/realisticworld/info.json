@@ -1,0 +1,7 @@
+{
+  "id": "RealisticWorld",
+  "name": "Realistic World",
+  "translation_key": "map.realisticworld",
+  "categories": ["world"],
+  "nations": []
+}

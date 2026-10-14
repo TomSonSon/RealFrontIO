@@ -163,6 +163,9 @@
   "account_settings_modal": {
     "title": "Account Settings"
   },
+  "alliance": {
+    "permanent": "Permanent"
+  },
   "ban_notice": {
     "appeal": "If you believe this is a mistake, contact us on Discord.",
     "category": {
@@ -607,6 +610,23 @@
     "verified_name": "Verified username",
     "verified_name_info": "Your username is reserved for your account and shows a verified badge in-game."
   },
+  "country_picker": {
+    "allies": "Allies",
+    "and_more": "and {count} more",
+    "cancel": "Cancel",
+    "choose_country": "Choose your country: click a country on the map",
+    "confirm": "Play as {country}",
+    "continent": "Continent",
+    "gdp": "GDP",
+    "gold": "Gold",
+    "neighbours": "Neighbours",
+    "none": "None",
+    "population": "Population",
+    "rivals": "Rivals",
+    "strength_rank": "Strength rank #{rank} of {total}",
+    "tiles": "Land tiles",
+    "troops": "Troops"
+  },
   "creator_code": {
     "change": "Change",
     "confirm_lock": "Confirm — locks for 7 days",
@@ -741,6 +761,34 @@
     "info_troops": "{percent}% of a human's max troops",
     "info_troops_same": "the same max troops as a human",
     "medium": "Medium"
+  },
+  "diplomacy": {
+    "alliance": "Alliance",
+    "alliances_blocked": "(alliances blocked)",
+    "allied": "Allied",
+    "amount_vs_yours": "{amount} (you {yours})",
+    "blocked_betrayer": "Blocked: betrayer",
+    "can_ally": "Can ally",
+    "coalition_war_hint": "Asks your allied nations to sanction and turn hostile to this country",
+    "gold": "Gold",
+    "sanctioned_by": "Sanctioned by {count}: income -{percent}%",
+    "sanctions": "Sanctions",
+    "standing": "Standing",
+    "standing_betrayer": "Betrayer",
+    "standing_good": "Good standing",
+    "standing_shaky": "Shaky",
+    "strength": "Strength",
+    "strength_comparable": "Comparable",
+    "strength_much_stronger": "Much stronger",
+    "strength_much_weaker": "Much weaker",
+    "title": "Diplomacy",
+    "trade": "Trade",
+    "trade_mutual": "Mutual embargo",
+    "trade_open": "Open",
+    "trade_they_embargo": "They embargo you",
+    "trade_you_embargo": "You embargo them",
+    "troops": "Troops",
+    "you_cannot_ally": "You cannot ally: you betrayed an ally recently"
   },
   "discord_user_header": {
     "avatar_alt": "Avatar"
@@ -1514,6 +1562,7 @@
     "pulicatlake": "Pulicat Lake",
     "qingchina": "Qing China",
     "random": "Random",
+    "realisticworld": "Realistic World",
     "riodejaneiro": "Rio de Janeiro",
     "russia": "Russia",
     "sanfrancisco": "San Francisco",
@@ -1707,6 +1756,10 @@
     "chat": "Chat",
     "cosmetic_get_label": "{name} (Get it in the store)",
     "cosmetics": "Equipped",
+    "declare_coalition_war": "Declare Coalition War",
+    "declare_coalition_war_disabled": "Coalition wars are only available in Realistic World games.",
+    "declare_coalition_war_no_allies": "You need allies to invite before you can declare a coalition war.",
+    "declare_coalition_war_sent": "Coalition war request sent against {name}.",
     "emotes": "Emojis",
     "flip_rocket_trajectory": "Flip rocket trajectory",
     "gold": "Gold",
@@ -1958,6 +2011,8 @@
     "ports_disabled": "Ports Disabled",
     "ports_disabled_label": "Ports",
     "random_spawn": "Random Spawn",
+    "realistic_world": "Realistic World",
+    "realistic_world_label": "Realistic World",
     "sams_disabled": "SAMs Disabled",
     "sams_disabled_label": "SAMs",
     "starting_gold": "{amount}M Starting Gold",
@@ -2006,6 +2061,48 @@
     "delete_unit_description": "Click to delete the nearest unit",
     "delete_unit_title": "Delete Unit",
     "upgrade_x": "Upgrade x{amount}"
+  },
+  "real_world_mode": {
+    "description": "Start on the real map: every country owns its real borders. Pick a country and play from its real alliances, forces and geography.",
+    "map_locked": "Locked to the real world map in Realistic World.",
+    "title": "Realistic World"
+  },
+  "realism_panel": {
+    "buy": "Buy",
+    "controller_none": "Uncontrolled",
+    "controller_you": "You",
+    "cost": "{cost} gold",
+    "effect_attackPower": "+{pct}% attack power",
+    "effect_goldIncome": "+{pct}% gold income",
+    "effect_structureCost": "{pct}% structure cost",
+    "effect_troopRegen": "+{pct}% troop regeneration",
+    "owned": "Owned",
+    "strait_bab_el_mandeb": "Strait of Bab-el-Mandeb",
+    "strait_bering": "Bering Strait",
+    "strait_danish_straits": "Danish Straits (Kattegat/Oresund)",
+    "strait_dover": "Strait of Dover (Pas de Calais)",
+    "strait_drake": "Drake Passage",
+    "strait_gibraltar": "Strait of Gibraltar",
+    "strait_hormuz": "Strait of Hormuz",
+    "strait_lombok": "Lombok Strait",
+    "strait_luzon": "Luzon Strait",
+    "strait_malacca": "Strait of Malacca",
+    "strait_mozambique": "Mozambique Channel",
+    "strait_panama": "Panama Canal",
+    "strait_suez": "Suez Canal",
+    "strait_sunda": "Sunda Strait",
+    "strait_taiwan": "Taiwan Strait",
+    "strait_tsushima": "Korea / Tsushima Strait",
+    "strait_turkish_straits": "Bosporus & Dardanelles",
+    "tech_economy_1": "Treasury Reforms",
+    "tech_economy_2": "Trade Liberalization",
+    "tech_economy_3": "Industrial Base",
+    "tech_military_1": "Conscript Drill",
+    "tech_military_2": "Modern Small Arms",
+    "tech_military_3": "Armored Division",
+    "tier_Global": "Global",
+    "tier_Major": "Major",
+    "tier_Minor": "Minor"
   },
   "relation": {
     "default": "Default",
@@ -2061,6 +2158,11 @@
     "options_changed_no_achievements": "Custom settings – achievements disabled",
     "sign_in_for_achievements": "Sign in for achievements",
     "toggle_achievements": "Toggle achievements"
+  },
+  "solo_home": {
+    "realistic_world": "Realistic World",
+    "realistic_world_desc": "Real borders. Pick your country.",
+    "solo_classic": "Solo (classic)"
   },
   "spawn_timer": {
     "team_percent_tooltip": "{team}: {percent}"
@@ -2259,6 +2361,23 @@
     "red": "Red",
     "teal": "Teal",
     "yellow": "Yellow"
+  },
+  "tech_tree": {
+    "branch_economy": "Economy",
+    "branch_military": "Military",
+    "button_tooltip": "Tech Tree ({key})",
+    "close": "Close",
+    "footer_gold": "Your gold: {gold}",
+    "need_more": "Need {amount} more",
+    "not_playing": "Only living players can buy technologies.",
+    "rank_cap_reached": "Rank cap reached",
+    "ranks_used": "Ranks used {used}/{max}",
+    "requires": "Requires {name}",
+    "straits_intro": "Ships of other nations that cross a strait you control pay you a toll.",
+    "tab_straits": "Straits",
+    "tab_technology": "Technology",
+    "title": "Technology",
+    "toll_per_ship": "{toll} gold per ship"
   },
   "territory_patterns": {
     "pattern": {
@@ -2544,6 +2663,8 @@
     "target_player": "Target Player",
     "target_player_desc": "Mark the player whose tile is under your cursor as a target for you and your allies.",
     "title": "Settings",
+    "toggle_tech_tree": "Tech Tree",
+    "toggle_tech_tree_desc": "Open or close the technology tree in Realistic World games.",
     "toggle_terrain": "Toggle Terrain",
     "toggle_view": "Toggle View",
     "toggle_view_desc": "Alternate view (terrain/countries)",

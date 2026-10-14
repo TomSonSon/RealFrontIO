@@ -46,6 +46,8 @@ describe("TradeShipExecution", () => {
       id: vi.fn(() => 1),
       clientID: vi.fn(() => 1),
       canTrade: vi.fn(() => true),
+      isOnSameTeam: vi.fn(() => false),
+      isAlliedWith: vi.fn(() => false),
     } as any;
 
     dstOwner = {
@@ -58,6 +60,8 @@ describe("TradeShipExecution", () => {
       unitCount: vi.fn(() => 1),
       clientID: vi.fn(() => 2),
       canTrade: vi.fn(() => true),
+      isOnSameTeam: vi.fn(() => false),
+      isAlliedWith: vi.fn(() => false),
     } as any;
 
     pirate = {
@@ -198,7 +202,7 @@ describe("TradeShipExecution", () => {
   });
 
   it("should count captured-ship payout as piracy revenue only", () => {
-    // Captured ships pay steal gold to the captor — GOLD_INDEX_STEAL
+    // Captured ships pay steal gold to the captor - GOLD_INDEX_STEAL
     // semantics: piracy revenue, distinct from trade revenue.
     tradeShip.owner = vi.fn(() => pirate);
     tradeShipExecution["pathFinder"] = {

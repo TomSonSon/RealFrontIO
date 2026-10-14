@@ -104,6 +104,10 @@ export class SendAttackIntentEvent implements GameEvent {
   constructor(
     public readonly targetID: PlayerID | null,
     public readonly troops: number,
+    // Optional focus: the tile under the cursor/click, concentrating the attack
+    // on that border region ("push a specific region harder"). Omit for a
+    // classic whole-border attack.
+    public readonly tile?: TileRef,
   ) {}
 }
 
@@ -165,6 +169,17 @@ export class SendEmbargoIntentEvent implements GameEvent {
 
 export class SendEmbargoAllIntentEvent implements GameEvent {
   constructor(public readonly action: "start" | "stop") {}
+}
+
+export class SendDeclareCoalitionWarIntentEvent implements GameEvent {
+  constructor(
+    public readonly target: PlayerView,
+    public readonly candidates: PlayerView[],
+  ) {}
+}
+
+export class SendPurchaseTechIntentEvent implements GameEvent {
+  constructor(public readonly techId: string) {}
 }
 
 export class SendDeleteUnitIntentEvent implements GameEvent {
@@ -316,6 +331,12 @@ export class Transport {
     this.subscribe(SendEmbargoIntentEvent, (e) => this.onSendEmbargoIntent(e));
     this.subscribe(SendEmbargoAllIntentEvent, (e) =>
       this.onSendEmbargoAllIntent(e),
+    );
+    this.subscribe(SendDeclareCoalitionWarIntentEvent, (e) =>
+      this.onSendDeclareCoalitionWarIntent(e),
+    );
+    this.subscribe(SendPurchaseTechIntentEvent, (e) =>
+      this.sendIntent({ type: "purchase_tech", techId: e.techId }),
     );
     this.subscribe(BuildUnitIntentEvent, (e) => this.onBuildUnitIntent(e));
 
@@ -794,6 +815,7 @@ export class Transport {
       type: "attack",
       targetID: event.targetID,
       troops: event.troops,
+      ...(event.tile !== undefined ? { tile: event.tile } : {}),
     });
   }
 
@@ -867,6 +889,16 @@ export class Transport {
     this.sendIntent({
       type: "embargo_all",
       action: event.action,
+    });
+  }
+
+  private onSendDeclareCoalitionWarIntent(
+    event: SendDeclareCoalitionWarIntentEvent,
+  ) {
+    this.sendIntent({
+      type: "declare_coalition_war",
+      target: event.target.id(),
+      candidates: event.candidates.map((c) => c.id()),
     });
   }
 

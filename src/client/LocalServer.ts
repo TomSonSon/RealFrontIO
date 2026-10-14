@@ -30,6 +30,7 @@ import {
   ReplaySpeedChangeEvent,
 } from "./InputHandler";
 import { startSingleplayerHeartbeat } from "./SingleplayerHeartbeat";
+import { SOLO_ONLY } from "./SoloOnly";
 import {
   defaultReplaySpeedMultiplier,
   ReplaySpeedMultiplier,
@@ -298,7 +299,7 @@ export class LocalServer {
   }
 
   private archiveGameRecord(unloading: boolean) {
-    if (this.archived || this.archiveInFlight) {
+    if (SOLO_ONLY || this.archived || this.archiveInFlight) {
       return;
     }
     const players: PlayerRecord[] = [

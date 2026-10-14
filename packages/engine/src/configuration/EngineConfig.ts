@@ -1,5 +1,7 @@
 import {
   Difficulty,
+  GameMapSize,
+  GameMapType,
   Gold,
   PlayerInfo,
   PlayerType,
@@ -12,6 +14,7 @@ import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { TeamCountConfig } from "@openfront/engine-api/Schemas";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
+import { realBordersCountry } from "@openfront/engine-lib/configuration/RealBordersStrength";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
 import {
   assertNever,
@@ -20,6 +23,8 @@ import {
   within,
 } from "@openfront/engine-lib/Util";
 import type { EngineUnitInfo, Game, Player, Unit } from "../game/Game";
+import { realisticSeedFor } from "../realism/RealisticWorld";
+import { IDENTITY_MULTIPLIERS, TechMultipliers } from "../realism/TechTree";
 
 export interface AttackLogicInput {
   terrain: TerrainType;
@@ -40,6 +45,12 @@ export interface AttackLogicInput {
   falloutRatio: number | null;
   /** Tiles on the attack front this tick (plus jitter); fixed for the tick. */
   borderSize: number;
+  /**
+   * Optional combat-power factor (1 = none) scaling the per-tile loss
+   * exchange. Set by AttackExecution from the attacker's tech attackPower
+   * (identity outside Realistic World).
+   */
+  attackerCombatPower?: number;
 }
 
 export interface AttackLogicResult {
@@ -83,24 +94,46 @@ const LARGE_ATTACKER_SPEED_DEPTH = 0.73;
 
 /**
  * Logistic in log(tiles): ~1 for small territories, easing down to
- * 1 - depth for huge ones, halfway at LARGE_TERRITORY_MIDPOINT.
+ * 1 - depth for huge ones, halfway at `midpoint`.
  */
-function largeTerritoryBonus(numTiles: number, depth: number): number {
+function largeTerritoryBonus(
+  numTiles: number,
+  depth: number,
+  midpoint: number,
+): number {
   return (
-    1 -
-    depth *
-      sigmoid(
-        log(numTiles),
-        LARGE_TERRITORY_STEEPNESS,
-        log(LARGE_TERRITORY_MIDPOINT),
-      )
+    1 - depth * sigmoid(log(numTiles), LARGE_TERRITORY_STEEPNESS, log(midpoint))
   );
 }
 
-function terrainAttackBase(terrain: TerrainType): {
+export { coalitionSanctionPercent } from "@openfront/engine-api/resources/Sanctions";
+
+function terrainAttackBase(
+  terrain: TerrainType,
+  realistic: boolean,
+): {
   mag: number;
   tileCost: number;
 } {
+  // Realistic World mode applies steeper terrain penalties (from
+  // research/real-world-realism/05-terrain-and-geography.md): mountains are
+  // far more costly and bloody to take, making them natural defensive lines
+  // and chokepoints that armies prefer to route around (see
+  // AttackExecution.addNeighbors, which deprioritises mountains in this mode).
+  if (realistic) {
+    switch (terrain) {
+      case TerrainType.Plains:
+        return { mag: 75, tileCost: 14 };
+      case TerrainType.Highland:
+        return { mag: 110, tileCost: 26 };
+      case TerrainType.Mountain:
+        return { mag: 170, tileCost: 42 };
+      case TerrainType.Impassable:
+        throw new Error(`impassable terrain cannot be attacked`);
+      default:
+        throw new Error(`terrain type ${terrain} not supported`);
+    }
+  }
   switch (terrain) {
     case TerrainType.Plains:
       return { mag: 80, tileCost: 16.5 };
@@ -151,9 +184,51 @@ export class EngineConfig extends Config {
   spawnNations(): boolean {
     return this._gameConfig.nations !== "disabled";
   }
+  /** Realism seeds are keyed by nation names of the World and Realistic World maps. */
+  isRealisticWorld(): boolean {
+    return (
+      (this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false) &&
+      (this._gameConfig.gameMap === GameMapType.World ||
+        this._gameConfig.gameMap === GameMapType.RealisticWorld) &&
+      this._gameConfig.gameMapSize !== GameMapSize.Compact
+    );
+  }
+
+  // --- Tech tree (Realistic World only) ---
+  //
+  // The game stores each player's owned tech-tree nodes (in GameImpl) and hands
+  // this config a lookup so the existing multiplier methods below can apply the
+  // per-player deterministic effects. The provider closes over the live game, so
+  // reads are always current. With no provider, or outside Realistic World, every
+  // multiplier is identity (classic mode byte-for-byte unchanged).
+  private _techTreeProvider: ((player: PlayerLike) => TechMultipliers) | null =
+    null;
+
+  /** Sets (or clears) the per-player tech multiplier lookup. Engine-side only. */
+  setTechTreeProvider(
+    provider: ((player: PlayerLike) => TechMultipliers) | null,
+  ): void {
+    this._techTreeProvider = provider;
+  }
+
+  /**
+   * The per-player tech multipliers, or identity when the tech tree is off
+   * (classic mode) or no provider is wired up. Gated behind isRealisticWorld().
+   */
+  private techMultipliersFor(player: PlayerLike): TechMultipliers {
+    if (!this.isRealisticWorld()) return IDENTITY_MULTIPLIERS;
+    return this._techTreeProvider
+      ? this._techTreeProvider(player)
+      : IDENTITY_MULTIPLIERS;
+  }
+
+  /** Tech attackPower as a per-tile combat factor; 1 outside realism. */
+  attackCombatPower(player: PlayerLike): number {
+    return this.techMultipliersFor(player).attackPower;
+  }
 
   bots(): number {
-    return this._gameConfig.bots;
+    return this.isRealBorders() ? 0 : this._gameConfig.bots;
   }
   disableNavMesh(): boolean {
     return this._gameConfig.disableNavMesh ?? false;
@@ -169,6 +244,24 @@ export class EngineConfig extends Config {
   }
   goldMultiplier(): number {
     return this._gameConfig.goldMultiplier ?? 1;
+  }
+  /**
+   * Relation-scaled trade (Realistic World only). Everyone still trades, as in
+   * reality (rivals trade - US-China, India-Russia energy) - but bloc allies
+   * trade deeper (alignment bonus) while neutral/rival trade is tariffed.
+   * Classic mode always returns 1, so behavior is unchanged outside realism.
+   */
+  tradeMultiplier(rel: "self" | "team" | "ally" | "other"): number {
+    if (!this.isRealisticWorld()) return 1;
+    switch (rel) {
+      case "ally":
+        return 1.2; // intra-bloc alignment bonus (8.2)
+      case "team":
+      case "self":
+        return 1;
+      case "other":
+        return 0.7; // tariffed neutral/rival trade (8.1)
+    }
   }
   startingGold(playerInfo: PlayerInfo): Gold {
     if (playerInfo.playerType === PlayerType.Bot) {
@@ -234,11 +327,13 @@ export class EngineConfig extends Config {
     }
     const distPenalty = citiesVisited * 5_000;
     const gold = Math.max(5000, baseGold - distPenalty);
-    return toInt(gold * this.goldMultiplierFor(player));
+    return toInt(
+      gold * this.goldMultiplierFor(player) * this.tradeMultiplier(rel),
+    );
   }
 
   trainStationMinRange(): number {
-    return 15;
+    return 15 * this.mapScale();
   }
   railroadMaxSize(): number {
     return this.trainStationMaxRange() * 1.4142;
@@ -399,6 +494,16 @@ export class EngineConfig extends Config {
   }
 
   private startingGoldFor(playerInfo: PlayerInfo): Gold {
+    if (
+      this.isRealisticWorld() &&
+      playerInfo.playerType === PlayerType.Nation
+    ) {
+      const seed = realisticSeedFor(playerInfo.name);
+      if (seed !== undefined) {
+        const configured = BigInt(this._gameConfig.startingGold ?? 0);
+        return configured > BigInt(seed.gold) ? configured : BigInt(seed.gold);
+      }
+    }
     const base = BigInt(this._gameConfig.startingGold ?? 0);
     const hc = this._gameConfig.hostCheats;
     if (hc?.startingGold && playerInfo.isLobbyCreator) {
@@ -418,13 +523,25 @@ export class EngineConfig extends Config {
       ) {
         return 0n;
       }
+      const realBorders = this.isRealBorders();
       const numUnits = types.reduce(
         (acc, type) =>
           acc +
-          Math.min(player.unitsOwned(type), player.unitsConstructed(type)),
+          Math.min(
+            realBorders
+              ? player.unitsOwnedUnseeded(type)
+              : player.unitsOwned(type),
+            player.unitsConstructed(type),
+          ),
         0,
       );
-      return BigInt(costFn(numUnits + extraUnits));
+      // Tech-tree structure cost reduction (Realistic World): the ECONOMY
+      // Industrial Base node flattens the escalating cost curve by a small
+      // deterministic factor. Identity (1) outside realism.
+      const structureCost = this.techMultipliersFor(player).structureCost;
+      const base = costFn(numUnits + extraUnits);
+      if (structureCost === 1) return BigInt(base);
+      return BigInt(Math.max(0, Math.floor(base * structureCost)));
     };
   }
 
@@ -467,7 +584,7 @@ export class EngineConfig extends Config {
     return 300 * 10; // 5 minutes.
   }
   minDistanceBetweenPlayers(): number {
-    return 30;
+    return 30 * this.mapScale();
   }
   boatMaxNumber(): number {
     if (this.isUnitDisabled(UnitType.TransportShip)) {
@@ -494,7 +611,10 @@ export class EngineConfig extends Config {
    */
   attackLogic(input: AttackLogicInput): AttackLogicResult {
     const { attackTroops, attacker, defender } = input;
-    let { mag, tileCost } = terrainAttackBase(input.terrain);
+    let { mag, tileCost } = terrainAttackBase(
+      input.terrain,
+      this.isRealisticWorld(),
+    );
 
     if (defender !== null && input.defenderHasDefensePost) {
       mag *= this.defensePostDefenseBonus();
@@ -506,8 +626,9 @@ export class EngineConfig extends Config {
       tileCost *= fallout;
     }
 
+    const mapScale = this.mapScale();
     if (defender === null) {
-      const tickBudget = input.borderSize * 2;
+      const tickBudget = input.borderSize * 2 * mapScale;
       return {
         attackerTroopLoss: mag / (attacker.type === PlayerType.Bot ? 10 : 5),
         defenderTroopLoss: 0,
@@ -534,13 +655,17 @@ export class EngineConfig extends Config {
 
     // Big territories are cheaper and faster to attack from and into, so
     // late games stay dynamic. The attacker's bonus is the stronger one.
+    const largeTerritoryMidpoint =
+      LARGE_TERRITORY_MIDPOINT * this.mapAreaScale();
     const largeAttackerBonus = largeTerritoryBonus(
       attacker.numTiles,
       LARGE_ATTACKER_DEPTH,
+      largeTerritoryMidpoint,
     );
     const largeDefenderBonus = largeTerritoryBonus(
       defender.numTiles,
       LARGE_DEFENDER_DEPTH,
+      largeTerritoryMidpoint,
     );
 
     const traitorLossMod = defender.isTraitor ? this.traitorDefenseDebuff() : 1;
@@ -558,7 +683,8 @@ export class EngineConfig extends Config {
       mag *
       traitorLossMod *
       within(troopRatio, 0.6, 2) *
-      (ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus +
+      ((ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus) /
+        this.mapAreaScale() +
         ATTACKER_LOSS_PER_DENSITY * defenderTroopLoss);
 
     // Speed: a tile's cost in tick-fractions grows with how outnumbered the
@@ -571,17 +697,19 @@ export class EngineConfig extends Config {
     const largeAttackerSpeedBonus = largeTerritoryBonus(
       attacker.numTiles,
       LARGE_ATTACKER_SPEED_DEPTH,
+      largeTerritoryMidpoint,
     );
+    const attackerCombatPower = input.attackerCombatPower ?? 1;
     return {
-      attackerTroopLoss,
-      defenderTroopLoss,
+      attackerTroopLoss: attackerTroopLoss / attackerCombatPower,
+      defenderTroopLoss: defenderTroopLoss * attackerCombatPower,
       tickFraction:
         (speedCost *
           tileCost *
           largeAttackerSpeedBonus *
           largeDefenderBonus *
           traitorCostMod) /
-        input.borderSize,
+        (input.borderSize * mapScale),
     };
   }
 
@@ -589,7 +717,9 @@ export class EngineConfig extends Config {
     attacker: PlayerLike,
     defender: PlayerLike | TerraNullius,
   ): number {
-    return Math.floor(attacker.troops() / 5);
+    return Math.floor(
+      (attacker.troops() / 5) * this.techMultipliersFor(attacker).attackPower,
+    );
   }
 
   warshipShellLifetime(): number {
@@ -597,11 +727,11 @@ export class EngineConfig extends Config {
   }
 
   radiusPortSpawn() {
-    return 20;
+    return 20 * this.mapScale();
   }
 
   tradeShipShortRangeDebuff(): number {
-    return 300;
+    return 300 * this.mapScale();
   }
 
   proximityBonusPortsNb(totalPorts: number) {
@@ -612,11 +742,24 @@ export class EngineConfig extends Config {
     if (attacker.type() === PlayerType.Bot) {
       return attacker.troops() / 20;
     } else {
-      return attacker.troops() / 5;
+      return Math.floor(
+        (attacker.troops() / 5) * this.techMultipliersFor(attacker).attackPower,
+      );
     }
   }
 
   startManpower(playerInfo: PlayerInfo): number {
+    if (
+      this.isRealisticWorld() &&
+      playerInfo.playerType === PlayerType.Nation
+    ) {
+      const seed = realisticSeedFor(playerInfo.name);
+      if (seed !== undefined) {
+        return this.isRealBorders()
+          ? (realBordersCountry(playerInfo.name)?.start ?? seed.troops)
+          : seed.troops;
+      }
+    }
     if (playerInfo.playerType === PlayerType.Bot) {
       return 10_000;
     }
@@ -638,7 +781,11 @@ export class EngineConfig extends Config {
   }
 
   goldAdditionRate(player: PlayerLike): Gold {
-    const multiplier = this.goldMultiplierFor(player);
+    // Realistic World tech tree: the ECONOMY branch's gold-income nodes scale
+    // the passive rate (identity = 1 outside realism).
+    const multiplier =
+      this.goldMultiplierFor(player) *
+      this.techMultipliersFor(player).goldIncome;
     let baseRate: bigint;
     if (player.type() === PlayerType.Bot) {
       baseRate = 50n;
@@ -648,15 +795,30 @@ export class EngineConfig extends Config {
     return BigInt(Math.floor(Number(baseRate) * multiplier));
   }
 
+  /**
+   * Troop regeneration (Realistic World tech tree): the MILITARY branch's
+   * troop-regen nodes scale the passive per-tick regeneration. Delegates to the
+   * base rate and scales its result, so the ordering rules in Config are the
+   * same outside realism. Deterministic: the base rate is pure.
+   */
+  override troopIncreaseRate(player: PlayerLike): number {
+    const base = super.troopIncreaseRate(player);
+    const troopRegen = this.techMultipliersFor(player).troopRegen;
+    if (troopRegen === 1 || base <= 0) return base;
+    const room = this.maxTroops(player) - player.troops();
+    return Math.min(Math.round(base * troopRegen), Math.max(room, 0));
+  }
+
   nukeSpeed(unitType: UnitType): number {
+    const s = this.mapScale();
     switch (unitType) {
       case UnitType.AtomBomb:
       case UnitType.HydrogenBomb:
-        return 10;
+        return 10 * s;
       case UnitType.MIRV:
-        return 15;
+        return 15 * s;
       case UnitType.MIRVWarhead:
-        return 22;
+        return 22 * s;
     }
     throw new Error(`Unknown nuke type: ${unitType}`);
   }
@@ -665,12 +827,43 @@ export class EngineConfig extends Config {
     return 14;
   }
 
-  defaultNukeTargetableRange(): number {
-    return 150;
+  /** MIRV warhead targeting radius around the MIRV's launch point, in tiles. */
+  mirvRange(): number {
+    return 1500 * this.mapScale();
+  }
+
+  /** Smallest Manhattan distance between two MIRV warhead targets, in tiles. */
+  mirvMinimumSpread(): number {
+    return 55 * this.mapScale();
+  }
+
+  /** Rows above the launch base where the MIRV separation point sits, in tiles. */
+  mirvSeparationHeight(): number {
+    return 500 * this.mapScale();
+  }
+
+  /** Rows below the separation point where the MIRV separation target sits, in tiles. */
+  mirvSeparationHeightOffset(): number {
+    return 50 * this.mapScale();
+  }
+
+  /** Tiles from the attack focus tile that count as the main effort. */
+  focusRadius(): number {
+    return 40 * this.mapScale();
+  }
+
+  /** Train speed in tiles per tick. */
+  trainSpeed(): number {
+    return 2 * this.mapScale();
+  }
+
+  /** Distance scale for SAM and other range-like tunables not covered above. */
+  samDistanceScale(): number {
+    return this.mapScale();
   }
 
   defaultSamRange(): number {
-    return 70;
+    return this.samRange(1);
   }
 
   samUpgradeDuration(): number {
@@ -693,7 +886,7 @@ export class EngineConfig extends Config {
   }
 
   defaultSamMissileSpeed(): number {
-    return 12;
+    return Math.round(12 * this.mapScale());
   }
 
   // Humans can be soldiers, soldiers attacking, soldiers in boat etc.
@@ -720,11 +913,11 @@ export class EngineConfig extends Config {
   }
 
   warshipPatrolRange(): number {
-    return 100;
+    return 100 * this.mapScale();
   }
 
   warshipTargettingRange(): number {
-    return 130;
+    return 130 * this.mapScale();
   }
 
   warshipShellAttackRate(): number {
@@ -750,7 +943,7 @@ export class EngineConfig extends Config {
   }
 
   warshipPassiveHealingRange(): number {
-    return 150;
+    return 150 * this.mapScale();
   }
 
   warshipPortSwitchThreshold(): number {

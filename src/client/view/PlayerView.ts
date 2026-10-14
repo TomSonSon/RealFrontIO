@@ -43,10 +43,30 @@ const FRIENDLY_TINT_TARGET = { r: 0, g: 255, b: 0, a: 1 };
 const EMBARGO_TINT_TARGET = { r: 255, g: 0, b: 0, a: 1 };
 const BORDER_TINT_RATIO = 0.35;
 
+/**
+ * Realism country key. An unclaimed human gets the same non-roster key the
+ * engine uses (PlayerImpl.realismKey), so it never matches a roster country
+ * by username. Nations keep their static name.
+ */
+export function realismKeyFor(
+  explicitKey: string | null,
+  type: PlayerType,
+  id: string,
+  name: string,
+): string {
+  if (explicitKey !== null) return explicitKey;
+  return type === PlayerType.Nation ? name : `human:${id}`;
+}
+
 export class PlayerView implements PlayerLike {
   public anonymousName: string | null = null;
   private decoder?: PatternDecoder;
 
+  private _techRanks: string[] = [];
+  private _reputation = 0;
+  private _embargoSenders = 0;
+  private _allianceBlocked = false;
+  private _realismKey: string | null = null;
   /** Long-lived renderer state — mutated in place by applyUpdate(). */
   public state: PlayerState;
   /** Static header data — set once at construction, never mutated. */
@@ -78,6 +98,11 @@ export class PlayerView implements PlayerLike {
     public readonly equippedCosmetics: PlayerCosmetics,
   ) {
     this.state = playerStateFromUpdate(data);
+    this._techRanks = data.techRanks?.slice() ?? [];
+    this._reputation = data.reputation ?? 0;
+    this._embargoSenders = data.embargoSenders ?? 0;
+    this._allianceBlocked = data.allianceBlocked ?? false;
+    this._realismKey = data.realismKey ?? null;
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -215,6 +240,15 @@ export class PlayerView implements PlayerLike {
    */
   applyUpdate(pu: PlayerUpdate): void {
     applyStateUpdate(this.state, pu);
+    if (pu.techRanks !== undefined) this._techRanks = pu.techRanks.slice();
+    if (pu.reputation !== undefined) this._reputation = pu.reputation;
+    if (pu.embargoSenders !== undefined) {
+      this._embargoSenders = pu.embargoSenders;
+    }
+    if (pu.allianceBlocked !== undefined) {
+      this._allianceBlocked = pu.allianceBlocked;
+    }
+    if (pu.realismKey !== undefined) this._realismKey = pu.realismKey;
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
     if (!userSettings.emojis()) {
@@ -391,6 +425,15 @@ export class PlayerView implements PlayerLike {
       ? this.anonymousName
       : this.static.name;
   }
+  /** The real name, not the anonymized one: the engine keys countries by it. */
+  realismKey(): string {
+    return realismKeyFor(
+      this._realismKey,
+      this.type(),
+      this.static.id,
+      this.static.name,
+    );
+  }
   displayName(): string {
     return this.anonymousName !== null && userSettings.anonymousNames()
       ? this.anonymousName
@@ -447,6 +490,22 @@ export class PlayerView implements PlayerLike {
     return this.state.targets.map(
       (id) => this.game.playerBySmallID(id) as PlayerView,
     );
+  }
+  /** Owned tech-tree node ids (Realistic World); empty when none. */
+  techRanks(): string[] {
+    return this._techRanks;
+  }
+  /** Betrayal reputation (Realistic World); 0 when absent. */
+  reputation(): number {
+    return this._reputation;
+  }
+  /** Players holding a permanent embargo against this one (Realistic World); 0 when absent. */
+  embargoSenders(): number {
+    return this._embargoSenders;
+  }
+  /** True while barred from forming alliances by reputation (Realistic World). */
+  allianceBlocked(): boolean {
+    return this._allianceBlocked;
   }
   gold(): Gold {
     // Engine Gold is bigint; renderer state stores number. Convert back at the

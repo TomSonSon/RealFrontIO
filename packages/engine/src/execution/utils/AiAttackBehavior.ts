@@ -32,6 +32,12 @@ import {
   targetTransportTile,
 } from "../../game/TransportShipUtils";
 import { PathFinding } from "../../pathfinding/PathFinder";
+import {
+  canAiAttack,
+  isRetaliation,
+  REAL_BORDERS_ATTACK_TROOP_SHARE,
+  REAL_BORDERS_CONQUEST_COOLDOWN_TICKS,
+} from "../../realism/RealBordersPolicy";
 import type {
   SnapshotReader,
   SnapshotWriter,
@@ -78,6 +84,9 @@ export class AiAttackBehavior {
   // Only set during a maybeAttack call: our land neighbors, and each boat route planned
   private landNeighbors: Set<Player> | null = null;
   private boatRoutes: Map<Player, BoatRoute | null> | null = null;
+  // Real borders: players we attacked at the last decision, and until when a kill holds us back
+  private watchedTargets: PlayerID[] = [];
+  private conquestHoldUntil: number = 0;
 
   constructor(
     private random: PseudoRandom,
@@ -96,6 +105,8 @@ export class AiAttackBehavior {
     return w.versioned(AiAttackBehaviorSnapshot, {
       botAttackTroopsSent: this.botAttackTroopsSent,
       followedLandings: this.followedLandings.map((a) => w.attack(a)),
+      watchedTargets: this.watchedTargets,
+      conquestHoldUntil: this.conquestHoldUntil,
       triggerRatio: this.triggerRatio,
       reserveRatio: this.reserveRatio,
       expandRatio: this.expandRatio,
@@ -124,6 +135,8 @@ export class AiAttackBehavior {
     this.boatRoutes = null;
     this.botAttackTroopsSent = s.botAttackTroopsSent;
     this.followedLandings = s.followedLandings.map((i) => r.attack(i));
+    this.watchedTargets = s.watchedTargets;
+    this.conquestHoldUntil = s.conquestHoldUntil;
     this.triggerRatio = s.triggerRatio;
     this.reserveRatio = s.reserveRatio;
     this.expandRatio = s.expandRatio;
@@ -132,6 +145,7 @@ export class AiAttackBehavior {
   }
 
   maybeAttack() {
+    this.updateConquestHold();
     const routes = new Map<Player, BoatRoute | null>();
     this.boatRoutes = routes;
     let landFront = false;
@@ -145,6 +159,33 @@ export class AiAttackBehavior {
       this.boatRoutes = null;
     }
     this.clearBlockedLane(routes, landFront);
+  }
+
+  // Real borders: a country we attacked at the last decision that is dead now was conquered
+  // (by us or not); either way we hold back offensives for a while.
+  private updateConquestHold(): void {
+    if (!this.game.config().isRealBorders()) return;
+    for (const id of this.watchedTargets) {
+      if (this.game.hasPlayer(id) && !this.game.player(id).isAlive()) {
+        this.conquestHoldUntil =
+          this.game.ticks() + REAL_BORDERS_CONQUEST_COOLDOWN_TICKS;
+      }
+    }
+    this.watchedTargets = this.player
+      .outgoingAttacks()
+      .map((a) => a.target())
+      .filter((t): t is Player => t.isPlayer())
+      .map((t) => t.id());
+  }
+
+  // canAiAttack plus the post-conquest cooldown, which only retaliation overrides
+  private canAttack(target: Player | TerraNullius): boolean {
+    if (!canAiAttack(this.game, this.player, target)) return false;
+    if (!target.isPlayer() || !this.game.config().isRealBorders()) return true;
+    return (
+      this.game.ticks() >= this.conquestHoldUntil ||
+      isRetaliation(this.player, target)
+    );
   }
 
   // Called every tick. Hard & Impossible boats are beachheads: the moment one lands
@@ -161,6 +202,7 @@ export class AiAttackBehavior {
       if (landing === null || this.followedLandings.includes(attack)) continue;
       this.followedLandings.push(attack);
       const target = attack.target();
+      if (!this.canAttack(target)) continue;
       if (!this.holdsLandNextTo(target, landing)) continue;
       this.sendLandAttack(
         target,
@@ -316,9 +358,13 @@ export class AiAttackBehavior {
     const x = this.game.x(tile);
     const y = this.game.y(tile);
     const unreachablePlayers = new Set<PlayerID>();
+    if (!this.canAttack(this.game.terraNullius())) {
+      return null;
+    }
+    const spread = 150 * this.game.config().mapScale();
     for (let i = 0; i < 500; i++) {
-      const randX = this.random.nextInt(x - 150, x + 150);
-      const randY = this.random.nextInt(y - 150, y + 150);
+      const randX = this.random.nextInt(x - spread, x + spread);
+      const randY = this.random.nextInt(y - spread, y + spread);
       if (!this.game.isValidCoord(randX, randY)) {
         continue;
       }
@@ -358,7 +404,7 @@ export class AiAttackBehavior {
         // Normal targeting: return unowned tiles or tiles owned by non-friendly players
         matchesCriteria = !owner.isPlayer() || !owner.isFriendly(this.player);
       }
-      if (!matchesCriteria) {
+      if (!matchesCriteria || !this.canAttack(owner)) {
         continue;
       }
 
@@ -1082,6 +1128,7 @@ export class AiAttackBehavior {
   }
 
   sendAttack(target: Player | TerraNullius, force = false): boolean {
+    if (!this.canAttack(target)) return false;
     if (!force && !this.shouldAttack(target)) return false;
 
     if (target.isPlayer()) {
@@ -1197,6 +1244,7 @@ export class AiAttackBehavior {
   }
 
   shouldAttack(other: Player | TerraNullius): boolean {
+    if (!this.canAttack(other)) return false;
     if (
       // Always attack Terra Nullius, non-humans and traitors
       other.isPlayer() === false ||
@@ -1339,6 +1387,17 @@ export class AiAttackBehavior {
       );
     } else {
       troops = nonBotTroops(targetTroops);
+    }
+
+    if (
+      target.isPlayer() &&
+      this.game.config().isRealBorders() &&
+      !isRetaliation(this.player, target)
+    ) {
+      troops = Math.min(
+        troops,
+        this.player.troops() * REAL_BORDERS_ATTACK_TROOP_SHARE,
+      );
     }
 
     // Hard & Impossible: don't drop below neighbor troop threshold (also applies to TerraNullius/fallout).
@@ -1571,7 +1630,14 @@ export class AiAttackBehavior {
     const picked = [tried];
     for (const { tile } of candidates) {
       if (picked.length > count) break;
-      if (picked.some((p) => this.game.manhattanDist(p, tile) < 50)) continue;
+      if (
+        picked.some(
+          (p) =>
+            this.game.manhattanDist(p, tile) <
+            50 * this.game.config().mapScale(),
+        )
+      )
+        continue;
       picked.push(tile);
     }
     return picked.slice(1);
@@ -1591,7 +1657,10 @@ export class AiAttackBehavior {
 
   // Warship targeting range, plus what it may move while our boat approaches
   private dangerRange(): number {
-    return this.game.config().warshipTargettingRange() + 20;
+    return (
+      this.game.config().warshipTargettingRange() +
+      20 * this.game.config().mapScale()
+    );
   }
 
   // Tiles a boat sails from launch to the shore at target, and the hostile warship that sinks it.
@@ -1654,7 +1723,11 @@ export class AiAttackBehavior {
         }
         // Shell and boat close in by at most 4 tiles a tick; 10 tiles spare for its reaction
         const ticksLeft = length - sailed(i);
-        if (4 * ticksLeft >= this.game.manhattanDist(w.tile(), route[i]) - 10) {
+        const spare = 10 * this.game.config().mapScale();
+        if (
+          4 * ticksLeft >=
+          this.game.manhattanDist(w.tile(), route[i]) - spare
+        ) {
           return { length, blocker: w };
         }
         break;
@@ -1666,14 +1739,15 @@ export class AiAttackBehavior {
   // Hard & Impossible don't sail further than this to attack someone
   private maxBoatRoute(): number {
     const { difficulty } = this.game.config().gameConfig();
+    const scale = this.game.config().mapScale();
     switch (difficulty) {
       case Difficulty.Easy:
       case Difficulty.Medium:
         return Infinity;
       case Difficulty.Hard:
-        return 300;
+        return 300 * scale;
       case Difficulty.Impossible:
-        return 500;
+        return 500 * scale;
       default:
         assertNever(difficulty);
     }
@@ -1851,10 +1925,12 @@ export class AiAttackBehavior {
 
 export const AiAttackBehaviorSnapshot = snapshotType({
   name: "AiAttackBehavior",
-  version: 2,
+  version: 3,
   schema: z.object({
     botAttackTroopsSent: zNum(),
     followedLandings: z.array(zRef()),
+    watchedTargets: z.array(z.string()),
+    conquestHoldUntil: zNum(),
     triggerRatio: zNum(),
     reserveRatio: zNum(),
     expandRatio: zNum(),
@@ -1862,5 +1938,6 @@ export const AiAttackBehaviorSnapshot = snapshotType({
   migrations: {
     // v1 nations never followed up landings
     1: (d) => ({ ...d, followedLandings: [] }),
+    2: (d) => ({ ...d, watchedTargets: [], conquestHoldUntil: 0 }),
   },
 });

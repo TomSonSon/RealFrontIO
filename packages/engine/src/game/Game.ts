@@ -288,6 +288,9 @@ export interface Unit extends UnitLike {
   isUnderConstruction(): boolean;
   setUnderConstruction(underConstruction: boolean): void;
 
+  // Placed at game start (real borders), not built by the owner
+  isSeeded(): boolean;
+
   // Upgradable Structures
   level(): number;
   increaseLevel(): void;
@@ -350,6 +353,12 @@ export interface Player extends PlayerLike {
   setSpawnTile(spawnTile: TileRef): void;
   spawnTile(): TileRef | undefined;
 
+  // Realistic World: the country whose real-world data this player uses
+  // (relations, baselines). Defaults to the player's name.
+  realismKey(): string;
+  hasRealismKey(): boolean;
+  setRealismKey(key: string): void;
+
   // Territory
   tiles(): ReadonlyTileSet;
   borderTiles(): ReadonlyTileSet;
@@ -394,6 +403,7 @@ export interface Player extends PlayerLike {
   unitCount(type: UnitType): number;
   unitsConstructed(type: UnitType): number;
   unitsOwned(type: UnitType): number;
+  unitsOwnedUnseeded(type: UnitType): number;
   buildableUnits(
     tile: TileRef | null,
     units?: readonly PlayerBuildableUnitType[],
@@ -408,6 +418,8 @@ export interface Player extends PlayerLike {
     spawnTile: TileRef,
     params: UnitParams<T>,
   ): Unit;
+  // Free structure that already stood at game start; not a purchase.
+  buildStartingUnit(type: UnitType, spawnTile: TileRef): Unit;
 
   // Returns the existing unit that can be upgraded,
   // or false if it cannot be upgraded.
@@ -442,6 +454,10 @@ export interface Player extends PlayerLike {
   removeAllAlliances(): void;
   createAllianceRequest(recipient: Player): AllianceRequest | null;
   betrayals(): number;
+  /** Per-game reliability (lower = a traitor nobody trusts this game). Derived, no persistence. */
+  reputation(): number;
+  /** Realistic World: a betrayer nobody will ally with this game. */
+  isAllianceBlacklisted(): boolean;
 
   // Targeting
   canTarget(other: Player): boolean;
@@ -543,6 +559,23 @@ export interface Game extends GameLike {
 
   // Alliances
   expireAlliance(alliance: Alliance): void;
+  /**
+   * Realistic World: registers a starting treaty alliance between two players
+   * without a request. No-op when either is dead, they are already allied, or
+   * alliances are disabled.
+   */
+  seedTreatyAlliance(a: Player, b: Player): void;
+  /**
+   * section 8.6 coalition war declaration. `initiator` proposes a war on `target` to
+   * `candidates`; each friendly candidate that votes yes joins (becomes
+   * hostile with the target and auto-sanctions it). Returns who joined.
+   * Bot members decide via NationCoalitionBehavior.
+   */
+  declareCoalitionWar(
+    initiator: Player,
+    target: Player,
+    candidates: Player[],
+  ): Player[];
 
   // Immunity timer
   isSpawnImmunityActive(): boolean;
@@ -569,6 +602,27 @@ export interface Game extends GameLike {
   config(): EngineConfig;
   isPaused(): boolean;
   setPaused(paused: boolean): void;
+
+  // Realistic World tech tree (identity in classic mode).
+  /** Owned tech-node ids for a player (empty array when none / none owned). */
+  ownedTechNodeIds(player: Player): readonly string[];
+  /** Whether the player can currently purchase `nodeId` (unlocked, uncapped, affordable). */
+  canPurchaseTech(player: Player, nodeId: string): boolean;
+  /**
+   * Spend gold to unlock a tech node. Permanent within the match (no refunds),
+   * like a directional commitment. Realistic World only; returns false when the
+   * tree is off, the node is not purchasable, or the player cannot afford it.
+   */
+  spendTech(player: Player, nodeId: string): boolean;
+
+  /** Non-temporary embargoes other players hold against `target` (sanction pressure). */
+  incomingEmbargoCount(target: Player): number;
+
+  /**
+   * Current controller of each Realistic World chokepoint, from tile
+   * ownership. Empty outside Realistic World.
+   */
+  chokepointControllers(): { id: string; controller: Player | null }[];
 
   // Units
   unit(id: number): Unit | undefined;

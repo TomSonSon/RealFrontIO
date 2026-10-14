@@ -7,7 +7,10 @@ export { GLUnavailableError, showGLGate, trackGLInit } from "./initGL";
 export { MapRenderer } from "./MapRenderer";
 export { preloadAtlasData } from "./passes/name-pass/AtlasData";
 export type { SpawnCenter } from "./passes/SpawnOverlayPass";
-export { applyGraphicsOverrides } from "./RenderOverrides";
+export {
+  applyGraphicsOverrides,
+  applyRealBordersOverrides,
+} from "./RenderOverrides";
 export { createRenderSettings, dumpSettings } from "./RenderSettings";
 export type { RenderSettings } from "./RenderSettings";
 export { deepAssign, deepDiff } from "./SettingsUtils";
@@ -17,8 +20,8 @@ export {
   getPaletteSize,
 } from "./utils/ColorUtils";
 export { renderDpr } from "./utils/Dpr";
-export { buildNukeTrajectory, samRange } from "./utils/NukeTrajectory";
-export type { SAMInfo } from "./utils/NukeTrajectory";
+export { buildNukeTrajectory } from "./utils/NukeTrajectory";
+export type { SAMInfo, TrajectoryLimits } from "./utils/NukeTrajectory";
 
 // Re-export shared types used in the public API
 export type {

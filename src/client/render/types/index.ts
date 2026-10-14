@@ -34,7 +34,7 @@ export type { BonusEvent, FrameEvents } from "./FrameEvents";
 // Unit type string constants and derived sets
 export {
   ALL_UNIT_TYPES,
-  NUKE_MAGNITUDES,
+  NUKE_TELEGRAPH_TYPES,
   NUKE_TYPES,
   SMOOTHED_NUKE_TYPES,
   STRUCTURE_TYPES,

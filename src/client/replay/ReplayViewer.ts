@@ -32,6 +32,7 @@ import { buildTerrainRowSpans } from "../render/frame/derive/TerrainRowSpans";
 import { uploadFrameData } from "../render/frame/Upload";
 import {
   applyGraphicsOverrides,
+  applyRealBordersOverrides,
   createRenderSettings,
   GLUnavailableError,
   MapRenderer,
@@ -84,9 +85,16 @@ import { ReplayTerrain } from "./ReplayTerrain";
 
 const WHEEL_ZOOM = 1.0015;
 
-/** Render settings with the viewer's graphics overrides applied. */
-function renderSettings(userSettings: UserSettings) {
+/** Render settings with the game's mode policy and the viewer's graphics overrides applied. */
+function renderSettings(
+  userSettings: UserSettings,
+  config: Config,
+  mapWidth: number,
+) {
   const settings = createRenderSettings();
+  if (config.isRealBorders()) {
+    applyRealBordersOverrides(settings, mapWidth);
+  }
   applyGraphicsOverrides(settings, userSettings.graphicsOverrides());
   return settings;
 }
@@ -107,6 +115,7 @@ async function openPlayback(
     allianceDuration: config.allianceDuration(),
     doomsdayClockWarnTicks:
       config.doomsdayClockConfig().warnSeconds * TICKS_PER_SECOND,
+    nukeMagnitudes: (unitType) => config.nukeMagnitudes(unitType),
   });
   return { config, playback };
 }
@@ -444,7 +453,10 @@ export class ReplayViewer extends LitElement {
     globalThis.addEventListener(
       `${USER_SETTINGS_CHANGED_EVENT}:${GRAPHICS_KEY}`,
       () => {
-        deepAssign(view.getSettings(), renderSettings(userSettings));
+        deepAssign(
+          view.getSettings(),
+          renderSettings(userSettings, config, header.mapWidth),
+        );
         view.rebuildTerrain();
         appearance.restyle(adapter);
       },
@@ -563,7 +575,7 @@ export class ReplayViewer extends LitElement {
         () => terrain.bytes.slice(),
         palette.palette,
         config,
-        renderSettings(userSettings),
+        renderSettings(userSettings, config, header.mapWidth),
         (cb) => {
           pending = cb;
           return 0;

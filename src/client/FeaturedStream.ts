@@ -3,7 +3,9 @@ import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { crazyGamesSDK } from "./CrazyGamesSDK";
 import { isDesktopShell } from "./DesktopShell";
+import { SOLO_ONLY } from "./SoloOnly";
 import { broadcastKey, streamsFeed, watchUrl } from "./StreamsFeed";
+import { lastUserMeResponse } from "./UserMeBroadcast";
 import { translateText } from "./Utils";
 
 // Homepage "featured stream" panel: embeds a Twitch channel and shows ONLY while it is
@@ -155,12 +157,14 @@ export class FeaturedStream extends LitElement {
   private dragging = false;
   private dragMoved = false;
 
-  // Light DOM so Tailwind classes apply (matches HomepagePromos).
+  // Light DOM so Tailwind classes apply.
   createRenderRoot() {
     return this;
   }
 
   connectedCallback() {
+    // Online streams feed: the solo-only build never renders or fetches it.
+    if (SOLO_ONLY) return;
     super.connectedCallback();
     const saved = localStorage.getItem(CORNER_KEY);
     if (saved === "tl" || saved === "tr" || saved === "bl" || saved === "br")
@@ -458,16 +462,21 @@ export class FeaturedStream extends LitElement {
   };
 
   // Everyone can minimize and close; ad-free users additionally get "hide for today"
-  // (any shop purchase makes a user adfree for life, which zeroes window.adsEnabled).
-  // Checked with `=== false` so the extra button doesn't flash before /user/me resolves
-  // the entitlement — a click landing before then simply closes for the visit instead.
+  // (any shop purchase makes a user adfree for life). Ad-free means the account flag, or
+  // a CrazyGames or desktop-shell session, which never see ads. Stays off until /user/me
+  // has resolved, so the extra button never flashes before the entitlement is known.
   //
-  // It must be reactive state fed by the userMeResponse event, not a read of
-  // window.adsEnabled at render time: the entitlement lands one round trip after load and
-  // the panel renders as soon as the feed does, so a plain read is very often taken while
-  // the flag is still undefined, and no later state change re-renders the header.
+  // It must be reactive state fed by the userMeResponse event, not a read at render time:
+  // the entitlement lands one round trip after load and the panel renders as soon as the
+  // feed does, so no later state change would re-render the header.
   private syncAdFree = () => {
-    this.adFree = window.adsEnabled === false;
+    const last = lastUserMeResponse();
+    if (last === null) return;
+    const me = last.response;
+    this.adFree =
+      (me !== false && me.player?.adfree === true) ||
+      crazyGamesSDK.isOnCrazyGames() ||
+      isDesktopShell();
   };
 
   // Everyone can close. ✕ is always just for this page visit; only the ad-free ⊘ makes it

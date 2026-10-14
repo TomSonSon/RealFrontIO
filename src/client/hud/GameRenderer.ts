@@ -29,13 +29,13 @@ import { BuildMenu } from "./layers/BuildMenu";
 import { ChatDisplay } from "./layers/ChatDisplay";
 import { ChatModal } from "./layers/ChatModal";
 import { ControlPanel } from "./layers/ControlPanel";
+import { CountryPicker } from "./layers/CountryPicker";
 import { EmojiTable } from "./layers/EmojiTable";
 import { EventsDisplay } from "./layers/EventsDisplay";
 import { GameLeftSidebar } from "./layers/GameLeftSidebar";
 import { GameRightSidebar } from "./layers/GameRightSidebar";
 import { HeadsUpMessage } from "./layers/HeadsUpMessage";
 import { ImmunityTimer } from "./layers/ImmunityTimer";
-import { InGamePromo } from "./layers/InGamePromo";
 import { MainRadialMenu } from "./layers/MainRadialMenu";
 import { MultiTabModal } from "./layers/MultiTabModal";
 import { NewLobbyPrompt } from "./layers/NewLobbyPrompt";
@@ -242,6 +242,15 @@ export function createRenderer(
   playerPanel.emojiTable = emojiTable;
   playerPanel.uiState = uiState;
 
+  const countryPicker = document.querySelector(
+    "country-picker",
+  ) as CountryPicker;
+  if (!(countryPicker instanceof CountryPicker)) {
+    console.error("country picker not found");
+  }
+  countryPicker.game = game;
+  countryPicker.eventBus = eventBus;
+
   playerPanel.setRole(playerRole);
 
   const chatModal = document.querySelector("chat-modal") as ChatModal;
@@ -300,12 +309,6 @@ export function createRenderer(
   immunityTimer.game = game;
   immunityTimer.eventBus = eventBus;
 
-  const inGamePromo = document.querySelector("in-game-promo") as InGamePromo;
-  if (!(inGamePromo instanceof InGamePromo)) {
-    console.error("in-game promo not found");
-  }
-  inGamePromo.game = game;
-
   const tutorialPanel = document.querySelector(
     "tutorial-panel",
   ) as TutorialPanel;
@@ -361,9 +364,9 @@ export function createRenderer(
     replayPanel,
     settingsModal,
     playerPanel,
+    countryPicker,
     headsUpMessage,
     multiTabModal,
-    inGamePromo,
     tutorialPanel,
     alertFrame,
     performanceOverlay,

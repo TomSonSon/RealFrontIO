@@ -29,6 +29,7 @@
  * viewport before screen draws.
  */
 
+import type { Config } from "@openfront/engine-lib/configuration/Config";
 import { DynamicInstanceBuffer } from "../DynamicBuffer";
 import type { RenderSettings } from "../RenderSettings";
 import coverageFragSrc from "../shaders/defense-coverage/defense-coverage.frag.glsl?raw";
@@ -83,6 +84,7 @@ export class DefenseCoveragePass {
     mapH: number,
     tileTex: WebGLTexture,
     settings: RenderSettings,
+    private config: Pick<Config, "defensePostRange">,
   ) {
     this.gl = gl;
     this.settings = settings;
@@ -231,7 +233,7 @@ export class DefenseCoveragePass {
     // Shared stamp state (uniforms/textures/VAO don't change between blocks).
     gl.useProgram(this.program);
     gl.uniform2f(this.uMapSize, this.mapW, this.mapH);
-    gl.uniform1f(this.uRange, this.settings.mapOverlay.defensePostRange);
+    gl.uniform1f(this.uRange, this.config.defensePostRange());
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tileTex);
     gl.bindVertexArray(this.vao);

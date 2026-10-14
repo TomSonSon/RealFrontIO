@@ -62,6 +62,7 @@ export class NukeExecution implements Execution {
     this.pathFinder = UniversalPathFinding.Parabola(mg, {
       increment: this.speed,
       directionUp: this.rocketDirectionUp,
+      minHeight: mg.config().parabolaMinHeight(),
     });
   }
 
@@ -329,6 +330,7 @@ export class NukeExecution implements Execution {
     const pathFinder = UniversalPathFinding.Parabola(this.mg, {
       increment: this.speed,
       directionUp: this.rocketDirectionUp,
+      minHeight: this.mg.config().parabolaMinHeight(),
     });
     const path: TileRef[] = [this.src];
     let result = pathFinder.next(this.src, this.dst, this.speed);

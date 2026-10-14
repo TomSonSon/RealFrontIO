@@ -3,7 +3,10 @@ import {
   GraphicsOverrides,
   GraphicsOverridesSchema,
 } from "../src/client/render/gl/GraphicsOverrides";
-import { applyGraphicsOverrides } from "../src/client/render/gl/RenderOverrides";
+import {
+  applyGraphicsOverrides,
+  applyRealBordersOverrides,
+} from "../src/client/render/gl/RenderOverrides";
 import { createRenderSettings } from "../src/client/render/gl/RenderSettings";
 
 function gen(overrides: GraphicsOverrides) {
@@ -493,5 +496,50 @@ describe("applyGraphicsOverrides", () => {
     expect(s.structure.borderDarken).toBe(0.7);
     expect(s.structure.fillDarken).toBe(1.0);
     expect(s.structure.iconAlpha).toBe(0.9);
+  });
+});
+
+describe("applyRealBordersOverrides", () => {
+  test("classic settings are untouched when the policy is not applied", () => {
+    const s = createRenderSettings();
+    expect(s.structure.dotsZoomThreshold).toBe(1.2);
+    expect(s.structure.dotScale).toBe(0.3);
+    expect(s.structure.iconSize).toBe(60);
+    expect(s.structure.shapes.City?.dotScale).toBeUndefined();
+  });
+
+  test("real borders shows dots until zoom 8 on a 2000-wide map and shrinks icons", () => {
+    const s = createRenderSettings();
+    applyRealBordersOverrides(s, 2000);
+    expect(s.structure.dotsZoomThreshold).toBe(8);
+    expect(s.structure.iconSize).toBeCloseTo(42);
+    expect(s.structure.dotScale).toBe(0.2);
+  });
+
+  test("real borders scales the dots threshold by map width", () => {
+    const s = createRenderSettings();
+    applyRealBordersOverrides(s, 5000);
+    expect(s.structure.dotsZoomThreshold).toBeCloseTo(3.2);
+  });
+
+  test("real borders makes capitals (City) larger than other dots", () => {
+    const s = createRenderSettings();
+    applyRealBordersOverrides(s, 2000);
+    expect(s.structure.shapes.City?.dotScale).toBe(1.5);
+    expect(s.structure.shapes.Port?.dotScale).toBeUndefined();
+  });
+
+  test("user showDots=false still wins over the real borders threshold", () => {
+    const s = createRenderSettings();
+    applyRealBordersOverrides(s, 2000);
+    applyGraphicsOverrides(s, { structure: { showDots: false } });
+    expect(s.structure.dotsZoomThreshold).toBe(0);
+  });
+
+  test("user iconSize still wins over the real borders scale", () => {
+    const s = createRenderSettings();
+    applyRealBordersOverrides(s, 2000);
+    applyGraphicsOverrides(s, { structure: { iconSize: 80 } });
+    expect(s.structure.iconSize).toBe(80);
   });
 });

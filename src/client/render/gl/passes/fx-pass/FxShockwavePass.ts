@@ -87,6 +87,7 @@ export class FxShockwavePass {
   constructor(
     private gl: WebGL2RenderingContext,
     private settings: RenderSettings,
+    private mapScale: number,
   ) {
     this.program = createProgram(
       gl,
@@ -231,7 +232,7 @@ export class FxShockwavePass {
       y,
       startMs: this.timeFn(),
       durationMs: fx.samShockwaveDurationMs,
-      maxRadius: fx.samShockwaveRadius,
+      maxRadius: fx.samShockwaveRadius * this.mapScale,
       style: 0, // SAM interception keeps the classic ring
       colors: [WHITE],
       speed: 1,

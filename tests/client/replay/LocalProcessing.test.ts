@@ -199,7 +199,11 @@ test("the browser's compression makes a replay the viewer plays as it grows", as
   expect(result.totalTicks).toBe(65);
   expect(appends.length).toBeGreaterThan(1);
 
-  const rules = { allianceDuration: 100, doomsdayClockWarnTicks: 150 };
+  const rules = {
+    allianceDuration: 100,
+    doomsdayClockWarnTicks: 150,
+    nukeMagnitudes: () => ({ inner: 12, outer: 30 }),
+  };
   const [first, ...more] = appends;
   const playback = await ReplayPlayback.open(
     { base, append: first },

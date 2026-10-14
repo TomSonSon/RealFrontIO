@@ -15,6 +15,10 @@ import { DoomsdayClockExecutionSnapshot } from "../execution/DoomsdayClockExecut
 import { EmbargoAllExecutionSnapshot } from "../execution/EmbargoAllExecution";
 import { EmbargoExecutionSnapshot } from "../execution/EmbargoExecution";
 import { EmojiExecutionSnapshot } from "../execution/EmojiExecution";
+import {
+  DeclareCoalitionWarExecutionSnapshot,
+  PurchaseTechExecutionSnapshot,
+} from "../execution/ExecutionManager";
 import { FactoryExecutionSnapshot } from "../execution/FactoryExecution";
 import { MarkDisconnectedExecutionSnapshot } from "../execution/MarkDisconnectedExecution";
 import { MirvExecutionSnapshot } from "../execution/MIRVExecution";
@@ -27,6 +31,8 @@ import { PauseExecutionSnapshot } from "../execution/PauseExecution";
 import { PlayerExecutionSnapshot } from "../execution/PlayerExecution";
 import { PortExecutionSnapshot } from "../execution/PortExecution";
 import { QuickChatExecutionSnapshot } from "../execution/QuickChatExecution";
+import { RealBordersInitExecutionSnapshot } from "../execution/RealBordersInitExecution";
+import { RealBordersStartExecutionSnapshot } from "../execution/RealBordersStartExecution";
 import { RecomputeRailClusterExecutionSnapshot } from "../execution/RecomputeRailClusterExecution";
 import { RetreatExecutionSnapshot } from "../execution/RetreatExecution";
 import { SAMLauncherExecutionSnapshot } from "../execution/SAMLauncherExecution";
@@ -61,6 +67,7 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   BreakAllianceExecutionSnapshot,
   CityExecutionSnapshot,
   ConstructionExecutionSnapshot,
+  DeclareCoalitionWarExecutionSnapshot,
   DefensePostExecutionSnapshot,
   DeleteUnitExecutionSnapshot,
   DonateGoldExecutionSnapshot,
@@ -80,7 +87,10 @@ export const EXECUTION_SNAPSHOT_TYPES = [
   PauseExecutionSnapshot,
   PlayerExecutionSnapshot,
   PortExecutionSnapshot,
+  PurchaseTechExecutionSnapshot,
   QuickChatExecutionSnapshot,
+  RealBordersInitExecutionSnapshot,
+  RealBordersStartExecutionSnapshot,
   RecomputeRailClusterExecutionSnapshot,
   RetreatExecutionSnapshot,
   SAMLauncherExecutionSnapshot,

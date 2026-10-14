@@ -167,7 +167,9 @@ describe("SAMRadiusPass WebGL Performance", () => {
 
     const gl = createWebGL2Stub();
     const settings = createRenderSettings();
-    const pass = new SAMRadiusPass(gl, MAP_WIDTH, settings);
+    const pass = new SAMRadiusPass(gl, MAP_WIDTH, settings, {
+      samRange: () => 100,
+    });
 
     pass.setLocalPlayer(1);
     pass.setAllies(new Set([1]));

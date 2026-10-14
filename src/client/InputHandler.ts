@@ -5,6 +5,7 @@ import {
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
 import { EventBus, GameEvent } from "@openfront/shared/EventBus";
+import { ToggleTechTreeEvent } from "./components/TechTreePanel";
 import { favoriteSlotForKey } from "./EmojiKeys";
 import { Platform } from "./Platform";
 import { UIState } from "./UIState";
@@ -13,6 +14,7 @@ import {
   USER_SETTINGS_CHANGED_EVENT,
   UserSettings,
 } from "./UserSettings";
+import { realisticWorldActive } from "./utilities/RealisticWorldToggle";
 import { ReplaySpeedMultiplier } from "./utilities/ReplaySpeedMultiplier";
 import { GameView, UnitView } from "./view";
 
@@ -94,6 +96,10 @@ export class AlternateViewEvent implements GameEvent {
 }
 
 export class CloseViewEvent implements GameEvent {}
+
+export class CountryPickEvent implements GameEvent {
+  constructor(public readonly smallID: number) {}
+}
 
 export class RefreshGraphicsEvent implements GameEvent {}
 
@@ -486,6 +492,13 @@ export class InputHandler {
         this.eventBus.emit(new GameSpeedDownIntentEvent());
       },
       (e: KeyboardEvent) => !e.repeat,
+    );
+    this.addKeybindAndEvent(
+      this.keybinds.toggleTechTree,
+      () => {
+        this.eventBus.emit(new ToggleTechTreeEvent());
+      },
+      () => realisticWorldActive(this.gameView),
     );
     this.addKeybindAndEvent(this.keybinds.attackRatioDown, () => {
       const increment = this.userSettings.attackRatioIncrement();
