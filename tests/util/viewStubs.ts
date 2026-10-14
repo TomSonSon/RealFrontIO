@@ -56,6 +56,7 @@ export function stubConfig(overrides: Partial<Config> = {}): Config {
     spawnImmunityDuration: () => 0,
     nationSpawnImmunityDuration: () => 0,
     unitInfo: () => ({ maxHealth: 100, constructionDuration: 20 }),
+    mapScale: () => 1,
     disableAlliances: () => false,
     allianceDuration: () => 100,
     deletionMarkDuration: () => 300,

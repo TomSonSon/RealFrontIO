@@ -288,6 +288,9 @@ export interface Unit extends UnitLike {
   isUnderConstruction(): boolean;
   setUnderConstruction(underConstruction: boolean): void;
 
+  // Placed at game start (real borders), not built by the owner
+  isSeeded(): boolean;
+
   // Upgradable Structures
   level(): number;
   increaseLevel(): void;
@@ -400,6 +403,7 @@ export interface Player extends PlayerLike {
   unitCount(type: UnitType): number;
   unitsConstructed(type: UnitType): number;
   unitsOwned(type: UnitType): number;
+  unitsOwnedUnseeded(type: UnitType): number;
   buildableUnits(
     tile: TileRef | null,
     units?: readonly PlayerBuildableUnitType[],
@@ -414,6 +418,8 @@ export interface Player extends PlayerLike {
     spawnTile: TileRef,
     params: UnitParams<T>,
   ): Unit;
+  // Free structure that already stood at game start; not a purchase.
+  buildStartingUnit(type: UnitType, spawnTile: TileRef): Unit;
 
   // Returns the existing unit that can be upgraded,
   // or false if it cannot be upgraded.

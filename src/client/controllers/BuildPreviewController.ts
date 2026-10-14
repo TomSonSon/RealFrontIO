@@ -149,6 +149,7 @@ export class BuildPreviewController implements Controller {
         if (traj !== null) {
           // Rebuild the arc with the live cursor as the destination (same
           // tile-center convention as the icon: shader adds +0.5).
+          const config = this.game.config();
           const data = buildNukeTrajectory(
             traj.srcX,
             traj.srcY,
@@ -157,6 +158,11 @@ export class BuildPreviewController implements Controller {
             this.game.height(),
             traj.directionUp,
             traj.sams,
+            {
+              parabolaMinHeight: config.parabolaMinHeight(),
+              targetableRange: config.defaultNukeTargetableRange(),
+              maxSamRange: config.maxSamRange(),
+            },
           );
           // Impassable terrain can't be targeted (nukeSpawn rejects it)
           // even though nukes fly over it — mark the destination with the

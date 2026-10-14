@@ -19,7 +19,7 @@ import { describe, expect, test } from "vitest";
 import { setup } from "./util/Setup";
 
 const REAL_BORDERS: Partial<GameConfig> = {
-  gameMap: GameMapType.World,
+  gameMap: GameMapType.RealisticWorld,
   gameMapSize: GameMapSize.Normal,
   gameMode: GameMode.FFA,
   publicGameModifiers: { isRealisticWorld: true },
@@ -82,11 +82,14 @@ function manifestNations(count: number): ManifestNation[] {
 const noExtras: AdditionalNation[] = [];
 
 describe("isRealBorders", () => {
-  test("true only for flag + World + Normal + FFA", () => {
+  test("true only for flag + RealisticWorld + Normal + FFA", () => {
     expect(config(REAL_BORDERS).isRealBorders()).toBe(true);
   });
 
-  test("false for Compact, Team mode, non-World maps, or the flag off", () => {
+  test("false for classic World, Compact, Team mode, other maps, or the flag off", () => {
+    expect(
+      config({ ...REAL_BORDERS, gameMap: GameMapType.World }).isRealBorders(),
+    ).toBe(false);
     expect(
       config({
         ...REAL_BORDERS,
@@ -106,6 +109,37 @@ describe("isRealBorders", () => {
       }).isRealBorders(),
     ).toBe(false);
     expect(config().isRealBorders()).toBe(false);
+  });
+});
+
+describe("isRealisticWorld (legacy realism gate)", () => {
+  const flag = { publicGameModifiers: { isRealisticWorld: true } };
+
+  test("true on World and RealisticWorld with the flag", () => {
+    expect(config(flag).isRealisticWorld()).toBe(true);
+    expect(
+      config({
+        ...flag,
+        gameMap: GameMapType.RealisticWorld,
+      }).isRealisticWorld(),
+    ).toBe(true);
+  });
+
+  test("false on Compact, other maps, or the flag off", () => {
+    expect(
+      config({ ...flag, gameMapSize: GameMapSize.Compact }).isRealisticWorld(),
+    ).toBe(false);
+    expect(
+      config({
+        ...flag,
+        gameMap: GameMapType.RealisticWorld,
+        gameMapSize: GameMapSize.Compact,
+      }).isRealisticWorld(),
+    ).toBe(false);
+    expect(
+      config({ ...flag, gameMap: GameMapType.Asia }).isRealisticWorld(),
+    ).toBe(false);
+    expect(config().isRealisticWorld()).toBe(false);
   });
 });
 
@@ -139,7 +173,7 @@ describe("real borders config overrides", () => {
 
   test("real borders game built through setup() reports the overrides", async () => {
     const game = await setup(
-      "world",
+      "../../../resources/maps/realisticworld",
       { ...REAL_BORDERS, bots: 5, randomSpawn: true },
       [],
       undefined,

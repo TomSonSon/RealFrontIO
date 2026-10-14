@@ -13,7 +13,11 @@ const gunzip = (d: Uint8Array) =>
       err ? reject(err) : resolve(new Uint8Array(out)),
     ),
   );
-const RULES = { allianceDuration: 100, doomsdayClockWarnTicks: 150 };
+const RULES = {
+  allianceDuration: 100,
+  doomsdayClockWarnTicks: 150,
+  nukeMagnitudes: () => ({ inner: 12, outer: 30 }),
+};
 
 describe("ReplayPlayback", () => {
   let rec: RecordedGame;

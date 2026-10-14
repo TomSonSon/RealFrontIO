@@ -410,6 +410,7 @@ export class GPURenderer {
       mapH,
       this.res.tileTex,
       this.settings,
+      config,
     );
 
     // --- Heat manager (needs tileTex, heatTexA/B) ---
@@ -556,7 +557,7 @@ export class GPURenderer {
     this.rangeCirclePass = new RangeCirclePass(gl);
 
     // --- SAM radius overlay (dashed green circles during build mode) ---
-    this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings);
+    this.samRadiusPass = new SAMRadiusPass(gl, mapW, this.settings, config);
     this.samRadiusPass.setPaletteData(paletteData);
 
     // --- Crosshair (warship placement) ---

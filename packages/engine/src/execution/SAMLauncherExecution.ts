@@ -40,7 +40,7 @@ type CachedInterception = {
 /**
  * Smart SAM targeting system preshoting nukes so its range is strictly enforced
  */
-class SAMTargetingSystem {
+export class SAMTargetingSystem {
   // Cached interception states indexed by nuke ID to avoid per-tick recomputation.
   private readonly precomputedNukes: Map<number, CachedInterception> =
     new Map();
@@ -220,7 +220,10 @@ class SAMTargetingSystem {
         ? trajectory[trajectory.length - 1].tile
         : samTile);
 
-    const distToSilo = this.mg.manhattanDist(samTile, targetTile);
+    // Distance in classic-map tiles, so the scoring ranges match on scaled maps
+    const distToSilo =
+      this.mg.manhattanDist(samTile, targetTile) /
+      this.mg.config().samDistanceScale();
 
     // Hydro unit type bonus
     // 70,000 offset balances the distance bonus between Hydro at 100 and Atom at 30

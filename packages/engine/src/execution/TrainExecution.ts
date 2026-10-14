@@ -30,7 +30,7 @@ export class TrainExecution implements Execution {
   private usedTiles: TileRef[] = []; // used for cars behind
   private stations: TrainStation[] = [];
   private currentRailroad: OrientedRailroad | null = null;
-  private speed: number = 2;
+  private speed: number;
   private _tradeStopsVisited: number = 0;
   private pathTiles: TileRef[] = [];
   private pathIndex: number = 0;
@@ -53,6 +53,7 @@ export class TrainExecution implements Execution {
 
   init(mg: Game, ticks: number): void {
     this.mg = mg;
+    this.speed = mg.config().trainSpeed();
     const stations = this.railNetwork.findStationsPath(
       this.source,
       this.destination,

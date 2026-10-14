@@ -68,14 +68,12 @@ export const TRAIL_TYPES: ReadonlySet<string> = new Set([
   UT_MIRV_WARHEAD,
 ]);
 
-/** Blast radii (in tiles) matching upstream DefaultConfig.nukeMagnitudes(). */
-export const NUKE_MAGNITUDES: Readonly<
-  Record<string, { inner: number; outer: number }>
-> = {
-  [UT_ATOM_BOMB]: { inner: 12, outer: 30 },
-  [UT_HYDROGEN_BOMB]: { inner: 80, outer: 100 },
-  [UT_MIRV_WARHEAD]: { inner: 12, outer: 18 },
-};
+/** Units that get a blast-radius telegraph; radii come from Config.nukeMagnitudes(). */
+export const NUKE_TELEGRAPH_TYPES: ReadonlySet<string> = new Set([
+  UT_ATOM_BOMB,
+  UT_HYDROGEN_BOMB,
+  UT_MIRV_WARHEAD,
+]);
 
 // ---------------------------------------------------------------------------
 // Ordered lists (atlas column order — used by GPU passes + header)

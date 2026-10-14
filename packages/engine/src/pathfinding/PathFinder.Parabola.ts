@@ -8,6 +8,7 @@ export interface ParabolaOptions {
   distanceBasedHeight?: boolean;
   directionUp?: boolean;
   ignoreMapBounds?: boolean;
+  minHeight?: number;
 }
 
 const PARABOLA_MIN_HEIGHT = 50;
@@ -32,9 +33,8 @@ export function getParabolaControlPoints(
   const dx = p3.x - p0.x;
   const dy = p3.y - p0.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  const maxHeight = distanceBasedHeight
-    ? Math.max(distance / 3, PARABOLA_MIN_HEIGHT)
-    : 0;
+  const minHeight = options?.minHeight ?? PARABOLA_MIN_HEIGHT;
+  const maxHeight = distanceBasedHeight ? Math.max(distance / 3, minHeight) : 0;
   const heightMult = directionUp ? -1 : 1;
   const mapHeight = gameMap.height();
 

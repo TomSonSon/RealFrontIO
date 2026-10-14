@@ -152,7 +152,6 @@ export interface RenderSettings {
     highlightBrighten: number;
     highlightFillBrighten: number;
     highlightThicken: number;
-    defensePostRange: number;
     embargoTintRatio: number;
     friendlyTintRatio: number;
     embargoTintR: number;
@@ -198,7 +197,11 @@ export interface RenderSettings {
      * so they cover a fixed area of the map.
      */
     iconGrowZoom: number;
-    shapes: Record<string, { scale: number; iconFill: number }>;
+    /** Extra multiplier on structure.dotScale for this shape in dots mode (default 1). */
+    shapes: Record<
+      string,
+      { scale: number; iconFill: number; dotScale?: number }
+    >;
     highlightOutlineWidth: number;
     highlightDimAlpha: number;
     /** HSV value multiplier applied to the icon fill (interior). 1.0 = no darkening. */

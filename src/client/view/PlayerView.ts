@@ -43,6 +43,21 @@ const FRIENDLY_TINT_TARGET = { r: 0, g: 255, b: 0, a: 1 };
 const EMBARGO_TINT_TARGET = { r: 255, g: 0, b: 0, a: 1 };
 const BORDER_TINT_RATIO = 0.35;
 
+/**
+ * Realism country key. An unclaimed human gets the same non-roster key the
+ * engine uses (PlayerImpl.realismKey), so it never matches a roster country
+ * by username. Nations keep their static name.
+ */
+export function realismKeyFor(
+  explicitKey: string | null,
+  type: PlayerType,
+  id: string,
+  name: string,
+): string {
+  if (explicitKey !== null) return explicitKey;
+  return type === PlayerType.Nation ? name : `human:${id}`;
+}
+
 export class PlayerView implements PlayerLike {
   public anonymousName: string | null = null;
   private decoder?: PatternDecoder;
@@ -51,6 +66,7 @@ export class PlayerView implements PlayerLike {
   private _reputation = 0;
   private _embargoSenders = 0;
   private _allianceBlocked = false;
+  private _realismKey: string | null = null;
   /** Long-lived renderer state — mutated in place by applyUpdate(). */
   public state: PlayerState;
   /** Static header data — set once at construction, never mutated. */
@@ -86,6 +102,7 @@ export class PlayerView implements PlayerLike {
     this._reputation = data.reputation ?? 0;
     this._embargoSenders = data.embargoSenders ?? 0;
     this._allianceBlocked = data.allianceBlocked ?? false;
+    this._realismKey = data.realismKey ?? null;
     // Respect the client-side "Disable emojis" setting: when off, never surface
     // emoji data to any renderer/overlay that reads this shared state (#4430).
     if (!userSettings.emojis()) {
@@ -231,6 +248,7 @@ export class PlayerView implements PlayerLike {
     if (pu.allianceBlocked !== undefined) {
       this._allianceBlocked = pu.allianceBlocked;
     }
+    if (pu.realismKey !== undefined) this._realismKey = pu.realismKey;
     // applyStateUpdate refreshes outgoingEmojis every tick; re-apply the
     // "Disable emojis" setting so live emojis stay hidden when it's off (#4430).
     if (!userSettings.emojis()) {
@@ -406,6 +424,15 @@ export class PlayerView implements PlayerLike {
     return this.anonymousName !== null && userSettings.anonymousNames()
       ? this.anonymousName
       : this.static.name;
+  }
+  /** The real name, not the anonymized one: the engine keys countries by it. */
+  realismKey(): string {
+    return realismKeyFor(
+      this._realismKey,
+      this.type(),
+      this.static.id,
+      this.static.name,
+    );
   }
   displayName(): string {
     return this.anonymousName !== null && userSettings.anonymousNames()

@@ -557,6 +557,7 @@ export class GameView implements GameLike {
     f.nukeTelegraphs = extractNukeTelegraphs(
       this._unitStates,
       this._map.width(),
+      (unitType) => this._config.nukeMagnitudes(unitType),
       this._myPlayer?.smallID() ?? 0,
       // The latest relation matrix — recomputed above when dirty, otherwise
       // carried over on the frame from the last rebuild.

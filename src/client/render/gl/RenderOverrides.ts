@@ -199,6 +199,29 @@ export function applyGraphicsOverrides(
   }
 }
 
+/**
+ * Real borders gives every country a capital, so at the default zoom (the
+ * whole map fits the screen) structure icons pile into clusters. Show dots
+ * until a country like Hungary spans about 300 device pixels, then shrink the
+ * icons and keep capitals a little larger than other dots.
+ * Call before applyGraphicsOverrides so explicit user settings still win.
+ */
+export function applyRealBordersOverrides(
+  settings: RenderSettings,
+  mapWidth: number,
+): void {
+  // The dots threshold is compared against camera scale in device pixels per
+  // tile (CSS zoom times devicePixelRatio). 8 px per tile is right for the
+  // 2000-wide map, so scale it down for wider maps.
+  settings.structure.dotsZoomThreshold = (8 * 2000) / mapWidth;
+  settings.structure.dotScale = 0.2;
+  settings.structure.iconSize *= 0.7;
+  const city = settings.structure.shapes.City;
+  if (city) {
+    city.dotScale = 1.5;
+  }
+}
+
 // hexToRgb yields 0-255 channels; the renderer uniforms are 0-1 floats.
 function applyHexColor(
   hex: string,

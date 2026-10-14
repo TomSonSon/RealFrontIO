@@ -29,6 +29,7 @@ describe("AmbienceController", () => {
       isValidCoord: () => true,
       ref: (x: number, y: number) => y * 1000 + x,
       nearbyUnits: () => nearby,
+      config: () => ({ mapScale: () => 1 }),
     };
     // screenCenter() returns world coordinates despite the field names.
     transformHandler = {

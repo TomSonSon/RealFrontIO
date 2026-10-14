@@ -7,20 +7,14 @@
 
 import type { NukeTrajectoryData } from "../../types";
 
-// Upstream constants
-const PARABOLA_MIN_HEIGHT = 50;
-const TARGETABLE_RANGE = 150;
-const TARGETABLE_RANGE_SQ = TARGETABLE_RANGE * TARGETABLE_RANGE;
 const THRESHOLD_SAMPLES = 32;
-
-// SAM range formula: 150 - 480 / (level + 5)
-const MAX_SAM_RANGE = 150;
-const SAM_RANGE_DIVISOR = 480;
-const SAM_RANGE_OFFSET = 5;
 const SAM_SAFETY_MARGIN = 0.75;
 
-export function samRange(level: number): number {
-  return MAX_SAM_RANGE - SAM_RANGE_DIVISOR / (level + SAM_RANGE_OFFSET);
+/** Rules values in tiles, read from Config for the current map scale. */
+export interface TrajectoryLimits {
+  parabolaMinHeight: number;
+  targetableRange: number;
+  maxSamRange: number;
 }
 
 export interface SAMInfo {
@@ -46,6 +40,7 @@ export function computeNukeControlPoints(
   dstY: number,
   mapH: number,
   directionUp: boolean,
+  parabolaMinHeight: number,
 ): {
   p0x: number;
   p0y: number;
@@ -59,7 +54,7 @@ export function computeNukeControlPoints(
   const dx = dstX - srcX;
   const dy = dstY - srcY;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const maxHeight = Math.max(dist / 3, PARABOLA_MIN_HEIGHT);
+  const maxHeight = Math.max(dist / 3, parabolaMinHeight);
   const hm = directionUp ? -1 : 1;
 
   return {
@@ -154,11 +149,13 @@ export function computeTrajectoryThresholds(
   dstX: number,
   dstY: number,
   sams: readonly SAMInfo[],
+  limits: TrajectoryLimits,
 ): {
   tUntargetableStart: number;
   tUntargetableEnd: number;
   tSamIntercept: number;
 } {
+  const TARGETABLE_RANGE_SQ = limits.targetableRange * limits.targetableRange;
   let tUntargetableStart = -1;
   let tUntargetableEnd = -1;
   let tSamIntercept = 1.0;
@@ -286,7 +283,7 @@ export function computeTrajectoryThresholds(
       const segDy = y - prevY;
       const l2 = segDx * segDx + segDy * segDy;
       const invL2 = l2 === 0 ? 0 : 1.0 / l2;
-      const maxDist = Math.sqrt(l2) + MAX_SAM_RANGE + SAM_SAFETY_MARGIN;
+      const maxDist = Math.sqrt(l2) + limits.maxSamRange + SAM_SAFETY_MARGIN;
       const maxDSrcSq = maxDist * maxDist;
 
       for (let s = 0; s < samLen; s++) {
@@ -366,6 +363,7 @@ export function buildNukeTrajectory(
   mapH: number,
   directionUp: boolean,
   sams: readonly SAMInfo[],
+  limits: TrajectoryLimits,
 ): NukeTrajectoryData {
   const cpRender = computeNukeControlPoints(
     srcX,
@@ -374,6 +372,7 @@ export function buildNukeTrajectory(
     dstY,
     mapH,
     directionUp,
+    limits.parabolaMinHeight,
   );
 
   const targetX = Math.round(dstX);
@@ -386,6 +385,7 @@ export function buildNukeTrajectory(
     targetX,
     targetY,
     sams,
+    limits,
   );
   return { ...cpRender, ...th };
 }

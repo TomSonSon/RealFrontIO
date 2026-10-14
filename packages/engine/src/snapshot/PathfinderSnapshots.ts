@@ -171,6 +171,7 @@ export const ParabolaSchema = z.object({
       distanceBasedHeight: z.boolean().optional(),
       directionUp: z.boolean().optional(),
       ignoreMapBounds: z.boolean().optional(),
+      minHeight: zNum().optional(),
     })
     .nullable(),
   lastTo: zTile().nullable(),

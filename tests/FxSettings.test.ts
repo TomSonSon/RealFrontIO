@@ -14,13 +14,19 @@ describe("nukeExplosionRadius", () => {
     fx.nukeRadiusAtom = 11;
     fx.nukeRadiusHydro = 22;
     fx.nukeRadiusMirv = 33;
-    expect(nukeExplosionRadius(fx, UT_ATOM_BOMB)).toBe(11);
-    expect(nukeExplosionRadius(fx, UT_HYDROGEN_BOMB)).toBe(22);
-    expect(nukeExplosionRadius(fx, UT_MIRV_WARHEAD)).toBe(33);
+    expect(nukeExplosionRadius(fx, UT_ATOM_BOMB, 1)).toBe(11);
+    expect(nukeExplosionRadius(fx, UT_HYDROGEN_BOMB, 1)).toBe(22);
+    expect(nukeExplosionRadius(fx, UT_MIRV_WARHEAD, 1)).toBe(33);
+  });
+
+  test("scales the per-bomb radius by the map scale", () => {
+    const fx = createRenderSettings().fx;
+    fx.nukeRadiusAtom = 11;
+    expect(nukeExplosionRadius(fx, UT_ATOM_BOMB, 2.5)).toBe(27.5);
   });
 
   test("is undefined for non-nuke units", () => {
-    expect(nukeExplosionRadius(createRenderSettings().fx, UT_WARSHIP)).toBe(
+    expect(nukeExplosionRadius(createRenderSettings().fx, UT_WARSHIP, 1)).toBe(
       undefined,
     );
   });

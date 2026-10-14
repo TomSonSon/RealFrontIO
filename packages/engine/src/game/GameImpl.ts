@@ -30,7 +30,7 @@ import {
   PlayerLike,
   UnitPredicate,
 } from "@openfront/engine-api/game/ReadViews";
-import { CHOKEPOINTS } from "@openfront/engine-api/resources/Chokepoints";
+import { chokepointsFor } from "@openfront/engine-api/resources/Chokepoints";
 import {
   AllPlayersStats,
   ClientID,
@@ -68,10 +68,7 @@ import {
 import { AbstractGraph } from "../pathfinding/algorithms/AbstractGraph";
 import { WaterPathFinder } from "../pathfinding/PathFinder";
 import { PathFinder } from "../pathfinding/types";
-import {
-  chokepointController,
-  hasChokepointMap,
-} from "../realism/ChokepointToll";
+import { chokepointController } from "../realism/ChokepointToll";
 import { seedStartingRelations } from "../realism/RealisticWorld";
 import {
   allNodeIds,
@@ -1787,8 +1784,10 @@ export class GameImpl implements Game {
   }
 
   chokepointControllers(): { id: string; controller: Player | null }[] {
-    if (!this._config.isRealisticWorld() || !hasChokepointMap(this)) return [];
-    return CHOKEPOINTS.map((cp) => ({
+    if (!this._config.isRealisticWorld()) return [];
+    const zones = chokepointsFor(this.width(), this.height());
+    if (zones === null) return [];
+    return zones.map((cp) => ({
       id: cp.id,
       controller: chokepointController(this, cp),
     }));

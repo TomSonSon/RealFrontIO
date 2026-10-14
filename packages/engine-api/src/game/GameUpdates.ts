@@ -268,6 +268,8 @@ export interface PlayerUpdate {
   /** Cumulative gold received from all sources (workers, trade, ...). */
   goldEarned?: Gold;
   troops?: number;
+  /** Explicit real borders country key; only set when a human claimed one. */
+  realismKey?: string;
   allies?: number[];
   embargoes?: Set<PlayerID>;
   isTraitor?: boolean;

@@ -17,6 +17,7 @@ uniform float uScaleFactor;
 uniform float uIconGrowZoom;
 uniform float uShapeScales[ATLAS_COLS];
 uniform float uIconFills[ATLAS_COLS];
+uniform float uDotShapeScales[ATLAS_COLS];
 
 out vec2  vLocalPos;
 out vec2  vAtlasUV;
@@ -36,9 +37,13 @@ void main() {
   vZoom = uZoom;
   vAtlasIdx = aInst1.x;
 
+  int shapeIdx = int(aInst1.x);
+  float shapeScale = uShapeScales[shapeIdx];
+  vShapeScale = shapeScale;
+
   float iconScale;
   if (uZoom <= uDotsThreshold) {
-    iconScale = uDotScale;
+    iconScale = uDotScale * uDotShapeScales[shapeIdx];
   } else if (uZoom >= uIconGrowZoom) {
     // World-anchored: grow proportionally to zoom so the structure covers a
     // fixed area of the map. Past this zoom, structures should feel like
@@ -47,10 +52,6 @@ void main() {
   } else {
     iconScale = min(1.0, uZoom / uScaleFactor);
   }
-
-  int shapeIdx = int(aInst1.x);
-  float shapeScale = uShapeScales[shapeIdx];
-  vShapeScale = shapeScale;
 
   float halfSize = uIconSize * iconScale * 0.5 / uZoom * shapeScale;
 

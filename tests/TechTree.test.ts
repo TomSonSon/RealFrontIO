@@ -67,6 +67,7 @@ function stubPlayer(overrides: Partial<PlayerLike> = {}): PlayerLike {
     troops: () => 10_000,
     gold: () => 100_000n,
     units: () => [],
+    realismKey: () => "me",
     ...overrides,
   };
 }

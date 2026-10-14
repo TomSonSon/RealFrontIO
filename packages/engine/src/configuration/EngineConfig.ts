@@ -14,6 +14,7 @@ import { PlayerLike } from "@openfront/engine-api/game/ReadViews";
 import { TeamCountConfig } from "@openfront/engine-api/Schemas";
 import { NukeType } from "@openfront/engine-api/StatsSchemas";
 import { Config } from "@openfront/engine-lib/configuration/Config";
+import { realBordersCountry } from "@openfront/engine-lib/configuration/RealBordersStrength";
 import { exp, log, pow2 } from "@openfront/engine-lib/DetMath";
 import {
   assertNever,
@@ -93,17 +94,15 @@ const LARGE_ATTACKER_SPEED_DEPTH = 0.73;
 
 /**
  * Logistic in log(tiles): ~1 for small territories, easing down to
- * 1 - depth for huge ones, halfway at LARGE_TERRITORY_MIDPOINT.
+ * 1 - depth for huge ones, halfway at `midpoint`.
  */
-function largeTerritoryBonus(numTiles: number, depth: number): number {
+function largeTerritoryBonus(
+  numTiles: number,
+  depth: number,
+  midpoint: number,
+): number {
   return (
-    1 -
-    depth *
-      sigmoid(
-        log(numTiles),
-        LARGE_TERRITORY_STEEPNESS,
-        log(LARGE_TERRITORY_MIDPOINT),
-      )
+    1 - depth * sigmoid(log(numTiles), LARGE_TERRITORY_STEEPNESS, log(midpoint))
   );
 }
 
@@ -185,11 +184,12 @@ export class EngineConfig extends Config {
   spawnNations(): boolean {
     return this._gameConfig.nations !== "disabled";
   }
-  /** Realism seeds are keyed by World-map nation names, so it is World-only. */
+  /** Realism seeds are keyed by nation names of the World and Realistic World maps. */
   isRealisticWorld(): boolean {
     return (
       (this._gameConfig.publicGameModifiers?.isRealisticWorld ?? false) &&
-      this._gameConfig.gameMap === GameMapType.World &&
+      (this._gameConfig.gameMap === GameMapType.World ||
+        this._gameConfig.gameMap === GameMapType.RealisticWorld) &&
       this._gameConfig.gameMapSize !== GameMapSize.Compact
     );
   }
@@ -333,7 +333,7 @@ export class EngineConfig extends Config {
   }
 
   trainStationMinRange(): number {
-    return 15;
+    return 15 * this.mapScale();
   }
   railroadMaxSize(): number {
     return this.trainStationMaxRange() * 1.4142;
@@ -523,10 +523,16 @@ export class EngineConfig extends Config {
       ) {
         return 0n;
       }
+      const realBorders = this.isRealBorders();
       const numUnits = types.reduce(
         (acc, type) =>
           acc +
-          Math.min(player.unitsOwned(type), player.unitsConstructed(type)),
+          Math.min(
+            realBorders
+              ? player.unitsOwnedUnseeded(type)
+              : player.unitsOwned(type),
+            player.unitsConstructed(type),
+          ),
         0,
       );
       // Tech-tree structure cost reduction (Realistic World): the ECONOMY
@@ -578,7 +584,7 @@ export class EngineConfig extends Config {
     return 300 * 10; // 5 minutes.
   }
   minDistanceBetweenPlayers(): number {
-    return 30;
+    return 30 * this.mapScale();
   }
   boatMaxNumber(): number {
     if (this.isUnitDisabled(UnitType.TransportShip)) {
@@ -620,8 +626,9 @@ export class EngineConfig extends Config {
       tileCost *= fallout;
     }
 
+    const mapScale = this.mapScale();
     if (defender === null) {
-      const tickBudget = input.borderSize * 2;
+      const tickBudget = input.borderSize * 2 * mapScale;
       return {
         attackerTroopLoss: mag / (attacker.type === PlayerType.Bot ? 10 : 5),
         defenderTroopLoss: 0,
@@ -648,13 +655,17 @@ export class EngineConfig extends Config {
 
     // Big territories are cheaper and faster to attack from and into, so
     // late games stay dynamic. The attacker's bonus is the stronger one.
+    const largeTerritoryMidpoint =
+      LARGE_TERRITORY_MIDPOINT * this.mapAreaScale();
     const largeAttackerBonus = largeTerritoryBonus(
       attacker.numTiles,
       LARGE_ATTACKER_DEPTH,
+      largeTerritoryMidpoint,
     );
     const largeDefenderBonus = largeTerritoryBonus(
       defender.numTiles,
       LARGE_DEFENDER_DEPTH,
+      largeTerritoryMidpoint,
     );
 
     const traitorLossMod = defender.isTraitor ? this.traitorDefenseDebuff() : 1;
@@ -672,7 +683,8 @@ export class EngineConfig extends Config {
       mag *
       traitorLossMod *
       within(troopRatio, 0.6, 2) *
-      (ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus +
+      ((ATTACKER_LOSS_BASE * largeAttackerBonus * largeDefenderBonus) /
+        this.mapAreaScale() +
         ATTACKER_LOSS_PER_DENSITY * defenderTroopLoss);
 
     // Speed: a tile's cost in tick-fractions grows with how outnumbered the
@@ -685,6 +697,7 @@ export class EngineConfig extends Config {
     const largeAttackerSpeedBonus = largeTerritoryBonus(
       attacker.numTiles,
       LARGE_ATTACKER_SPEED_DEPTH,
+      largeTerritoryMidpoint,
     );
     const attackerCombatPower = input.attackerCombatPower ?? 1;
     return {
@@ -696,7 +709,7 @@ export class EngineConfig extends Config {
           largeAttackerSpeedBonus *
           largeDefenderBonus *
           traitorCostMod) /
-        input.borderSize,
+        (input.borderSize * mapScale),
     };
   }
 
@@ -714,11 +727,11 @@ export class EngineConfig extends Config {
   }
 
   radiusPortSpawn() {
-    return 20;
+    return 20 * this.mapScale();
   }
 
   tradeShipShortRangeDebuff(): number {
-    return 300;
+    return 300 * this.mapScale();
   }
 
   proximityBonusPortsNb(totalPorts: number) {
@@ -742,7 +755,9 @@ export class EngineConfig extends Config {
     ) {
       const seed = realisticSeedFor(playerInfo.name);
       if (seed !== undefined) {
-        return seed.troops;
+        return this.isRealBorders()
+          ? (realBordersCountry(playerInfo.name)?.start ?? seed.troops)
+          : seed.troops;
       }
     }
     if (playerInfo.playerType === PlayerType.Bot) {
@@ -795,14 +810,15 @@ export class EngineConfig extends Config {
   }
 
   nukeSpeed(unitType: UnitType): number {
+    const s = this.mapScale();
     switch (unitType) {
       case UnitType.AtomBomb:
       case UnitType.HydrogenBomb:
-        return 10;
+        return 10 * s;
       case UnitType.MIRV:
-        return 15;
+        return 15 * s;
       case UnitType.MIRVWarhead:
-        return 22;
+        return 22 * s;
     }
     throw new Error(`Unknown nuke type: ${unitType}`);
   }
@@ -811,12 +827,43 @@ export class EngineConfig extends Config {
     return 14;
   }
 
-  defaultNukeTargetableRange(): number {
-    return 150;
+  /** MIRV warhead targeting radius around the MIRV's launch point, in tiles. */
+  mirvRange(): number {
+    return 1500 * this.mapScale();
+  }
+
+  /** Smallest Manhattan distance between two MIRV warhead targets, in tiles. */
+  mirvMinimumSpread(): number {
+    return 55 * this.mapScale();
+  }
+
+  /** Rows above the launch base where the MIRV separation point sits, in tiles. */
+  mirvSeparationHeight(): number {
+    return 500 * this.mapScale();
+  }
+
+  /** Rows below the separation point where the MIRV separation target sits, in tiles. */
+  mirvSeparationHeightOffset(): number {
+    return 50 * this.mapScale();
+  }
+
+  /** Tiles from the attack focus tile that count as the main effort. */
+  focusRadius(): number {
+    return 40 * this.mapScale();
+  }
+
+  /** Train speed in tiles per tick. */
+  trainSpeed(): number {
+    return 2 * this.mapScale();
+  }
+
+  /** Distance scale for SAM and other range-like tunables not covered above. */
+  samDistanceScale(): number {
+    return this.mapScale();
   }
 
   defaultSamRange(): number {
-    return 70;
+    return this.samRange(1);
   }
 
   samUpgradeDuration(): number {
@@ -839,7 +886,7 @@ export class EngineConfig extends Config {
   }
 
   defaultSamMissileSpeed(): number {
-    return 12;
+    return Math.round(12 * this.mapScale());
   }
 
   // Humans can be soldiers, soldiers attacking, soldiers in boat etc.
@@ -866,11 +913,11 @@ export class EngineConfig extends Config {
   }
 
   warshipPatrolRange(): number {
-    return 100;
+    return 100 * this.mapScale();
   }
 
   warshipTargettingRange(): number {
-    return 130;
+    return 130 * this.mapScale();
   }
 
   warshipShellAttackRate(): number {
@@ -896,7 +943,7 @@ export class EngineConfig extends Config {
   }
 
   warshipPassiveHealingRange(): number {
-    return 150;
+    return 150 * this.mapScale();
   }
 
   warshipPortSwitchThreshold(): number {

@@ -27,6 +27,8 @@ export interface PlayerLike {
   troops(): number;
   gold(): Gold;
   units(type: UnitType): readonly UnitLike[];
+  /** Real borders country this player plays (nations: their name). */
+  realismKey(): string;
 }
 
 export interface UnitLike {

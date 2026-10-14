@@ -204,7 +204,7 @@ export class AttackingTroopsController implements Controller {
       const curY = slot.srcY + (slot.dstY - slot.srcY) * t;
 
       const jump = Math.hypot(next.x - curX, next.y - curY);
-      if (jump > SNAP_DISTANCE) {
+      if (jump > SNAP_DISTANCE * this.game.config().mapScale()) {
         slot.curX = next.x;
         slot.curY = next.y;
         slot.srcX = next.x;

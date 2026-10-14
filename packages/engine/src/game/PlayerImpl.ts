@@ -188,6 +188,10 @@ export class PlayerImpl implements Player {
     UnitType,
     { version: number; owned: number }
   >();
+  private myUnitsOwnedUnseededMemo = new Map<
+    UnitType,
+    { version: number; owned: number }
+  >();
   public _tiles = new TileSet();
 
   public pastOutgoingAllianceRequests: AllianceRequest[] = [];
@@ -401,6 +405,7 @@ export class PlayerImpl implements Player {
       displayName: this.displayName(),
       clanTag: this.clanTag(),
       nationFlag: this.nationFlag(),
+      realismKey: this._realismKey ?? undefined,
       id: this.id(),
       team: this.team() ?? undefined,
       smallID: this.smallID(),
@@ -599,6 +604,30 @@ export class PlayerImpl implements Player {
     return total;
   }
 
+  // unitsOwned() without the seeded starting structures. Prices count these
+  // against unitsConstructed, which never includes them.
+  unitsOwnedUnseeded(type: UnitType): number {
+    const memo = this.myUnitsOwnedUnseededMemo.get(type);
+    if (memo !== undefined && memo.version === this._myUnitsVersion) {
+      return memo.owned;
+    }
+    let total = 0;
+    for (const unit of this._units) {
+      if (unit.type() === type && !unit.isSeeded()) {
+        if (unit.isUnderConstruction()) {
+          total++;
+        } else {
+          total += unit.level();
+        }
+      }
+    }
+    this.myUnitsOwnedUnseededMemo.set(type, {
+      version: this._myUnitsVersion,
+      owned: total,
+    });
+    return total;
+  }
+
   sharesBorderWith(other: Player | TerraNullius): boolean {
     const map = this.mg.map();
     const otherID = other.smallID();
@@ -780,7 +809,10 @@ export class PlayerImpl implements Player {
   }
 
   realismKey(): string {
-    return this._realismKey ?? this.name();
+    if (this._realismKey !== null) return this._realismKey;
+    return this.type() === PlayerType.Nation
+      ? this.name()
+      : `human:${this.id()}`;
   }
 
   hasRealismKey(): boolean {
@@ -1489,6 +1521,35 @@ export class PlayerImpl implements Player {
     }
 
     const cost = this.mg.unitInfo(type).cost(this.mg, this);
+    const b = this.addUnitInstance(type, spawnTile, params);
+    this.recordUnitConstructed(type);
+    this.removeGold(cost);
+    this.removeTroops("troops" in params ? (params.troops ?? 0) : 0);
+
+    return b;
+  }
+
+  /**
+   * A structure that already stood at game start (real borders). Built like
+   * buildUnit, but free and not counted in unitsConstructed, so the prices of
+   * later purchases match a game where it was never placed.
+   */
+  buildStartingUnit(type: UnitType, spawnTile: TileRef): Unit {
+    if (this.mg.config().isUnitDisabled(type)) {
+      throw new Error(
+        `Attempted to build disabled unit ${type} at tile ${spawnTile} by player ${this.name()}`,
+      );
+    }
+    const unit = this.addUnitInstance(type, spawnTile, {});
+    unit.markSeeded();
+    return unit;
+  }
+
+  private addUnitInstance<T extends UnitType>(
+    type: T,
+    spawnTile: TileRef,
+    params: UnitParams<T>,
+  ): UnitImpl {
     const b = new UnitImpl(
       type,
       this.mg,
@@ -1499,12 +1560,8 @@ export class PlayerImpl implements Player {
     );
     this._units.push(b);
     this._myUnitsVersion++;
-    this.recordUnitConstructed(type);
-    this.removeGold(cost);
-    this.removeTroops("troops" in params ? (params.troops ?? 0) : 0);
     this.mg.addUpdate(b.toUpdate());
     this.mg.addUnit(b);
-
     return b;
   }
 
@@ -1823,7 +1880,7 @@ export class PlayerImpl implements Player {
     if (this.mg.owner(tile) !== this) {
       return [];
     }
-    const searchRadius = 15;
+    const searchRadius = this.mg.config().structureMinDist();
     const searchRadiusSquared = searchRadius ** 2;
 
     const nearbyUnits = this.mg.nearbyUnits(
@@ -2157,6 +2214,7 @@ export class PlayerImpl implements Player {
     this.myUnitsMemo = new Map();
     this.myUnitCountMemo = new Map();
     this.myUnitsOwnedMemo = new Map();
+    this.myUnitsOwnedUnseededMemo = new Map();
     this.pastOutgoingAllianceRequests = s.pastOutgoingAllianceRequests.map(
       (i) => r.allianceRequest<AllianceRequest>(i),
     );

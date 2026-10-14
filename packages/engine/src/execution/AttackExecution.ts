@@ -36,7 +36,6 @@ const malusForRetreat = 25;
 // Focused-attack tuning ("push a specific region harder"). A focus tile makes
 // the attack concentrate its frontier and per-tick budget near that point (the
 // Schwerpunkt / main effort) while other borders become economy-of-force.
-const FOCUS_RADIUS = 40; // tiles from the focus tile treated as the "main effort"
 const FOCUS_PRIORITY_BONUS = 60; // min-heap priority offset (focus dequeues first)
 const FOCUS_SPEED_MIN = 0.5; // budget cost multiplier at the focus (2x throughput)
 const FOCUS_SPEED_MAX = 1.0; // budget cost multiplier far away (a focus never slows an attack)
@@ -47,10 +46,10 @@ const FOCUS_SPEED_MAX = 1.0; // budget cost multiplier far away (a focus never s
  * the same as an unfocused attack.
  * Monotone, deterministic, pure.
  */
-export function focusBudgetWeight(dist: number): number {
-  if (dist <= FOCUS_RADIUS) return FOCUS_SPEED_MIN;
-  if (dist >= FOCUS_RADIUS * 2) return FOCUS_SPEED_MAX;
-  const t = (dist - FOCUS_RADIUS) / FOCUS_RADIUS;
+export function focusBudgetWeight(dist: number, focusRadius: number): number {
+  if (dist <= focusRadius) return FOCUS_SPEED_MIN;
+  if (dist >= focusRadius * 2) return FOCUS_SPEED_MAX;
+  const t = (dist - focusRadius) / focusRadius;
   return FOCUS_SPEED_MIN + (FOCUS_SPEED_MAX - FOCUS_SPEED_MIN) * t;
 }
 export class AttackExecution implements Execution {
@@ -370,6 +369,7 @@ export class AttackExecution implements Execution {
         this.focusTile !== null
           ? focusBudgetWeight(
               this.map.manhattanDist(this.focusTile, tileToConquer),
+              this.mg.config().focusRadius(),
             )
           : 1;
       tickBudget -= tickFraction * weight;
@@ -489,9 +489,10 @@ export class AttackExecution implements Execution {
       // only receive the economy-of-force leftover.
       let focusPriority = 0;
       if (this.focusTile !== null) {
+        const focusRadius = this.mg.config().focusRadius();
         const d = this.map.manhattanDist(this.focusTile, neighbor);
-        if (d < FOCUS_RADIUS) {
-          focusPriority = -FOCUS_PRIORITY_BONUS * (1 - d / FOCUS_RADIUS);
+        if (d < focusRadius) {
+          focusPriority = -FOCUS_PRIORITY_BONUS * (1 - d / focusRadius);
         }
       }
 
@@ -505,7 +506,13 @@ export class AttackExecution implements Execution {
   }
 
   private handleDeadDefender() {
-    if (!(this.target.isPlayer() && this.target.numTilesOwned() < 100)) return;
+    if (
+      !(
+        this.target.isPlayer() &&
+        this.target.numTilesOwned() < 100 * this.mg.config().mapAreaScale()
+      )
+    )
+      return;
     const target: Player = this.target;
 
     this.mg.conquerPlayer(this._owner, target);

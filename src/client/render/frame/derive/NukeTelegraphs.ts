@@ -1,8 +1,15 @@
+import type { UnitType } from "@openfront/engine-api/game/GameTypes";
 import type { NukeTelegraphData, UnitState } from "../../types";
-import { NUKE_MAGNITUDES } from "../../types";
+import { NUKE_TELEGRAPH_TYPES } from "../../types";
 
 // Must match RelationMatrix.ts
 const RELATION_FRIENDLY = 1;
+
+/** Blast radii in tiles for a nuke type; Config.nukeMagnitudes() fits. */
+export type NukeMagnitudeOf = (unitType: UnitType) => {
+  inner: number;
+  outer: number;
+};
 
 export const TELEGRAPH_SELF = 0;
 export const TELEGRAPH_FRIENDLY = 1;
@@ -44,6 +51,7 @@ function classifyOwner(
 export function extractNukeTelegraphs(
   units: ReadonlyMap<number, UnitState>,
   mapW: number,
+  nukeMagnitudes: NukeMagnitudeOf,
   localPlayerID = 0,
   relationMatrix?: Uint8Array,
   relationSize = 0,
@@ -57,8 +65,8 @@ export function extractNukeTelegraphs(
     const plan = motionPlans?.get(u.id);
     if (plan && plan.startTick > currentTick) continue;
 
-    const mag = NUKE_MAGNITUDES[u.unitType];
-    if (!mag) continue;
+    if (!NUKE_TELEGRAPH_TYPES.has(u.unitType)) continue;
+    const mag = nukeMagnitudes(u.unitType as UnitType);
     telegraphs.push({
       x: u.targetTile % mapW,
       y: (u.targetTile - (u.targetTile % mapW)) / mapW,
@@ -83,6 +91,7 @@ export function extractNukeTelegraphsFromIds(
   nukeIds: readonly number[],
   units: ReadonlyMap<number, UnitState>,
   mapW: number,
+  nukeMagnitudes: NukeMagnitudeOf,
   localPlayerID = 0,
   relationMatrix?: Uint8Array,
   relationSize = 0,
@@ -97,8 +106,8 @@ export function extractNukeTelegraphsFromIds(
     const plan = motionPlans?.get(u.id);
     if (plan && plan.startTick > currentTick) continue;
 
-    const mag = NUKE_MAGNITUDES[u.unitType];
-    if (!mag) continue;
+    if (!NUKE_TELEGRAPH_TYPES.has(u.unitType)) continue;
+    const mag = nukeMagnitudes(u.unitType as UnitType);
     telegraphs.push({
       x: u.targetTile % mapW,
       y: (u.targetTile - (u.targetTile % mapW)) / mapW,

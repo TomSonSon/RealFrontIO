@@ -108,7 +108,7 @@ export class AmbienceController implements Controller {
     let closest: { type: UnitType; distSquared: number } | null = null;
     for (const nearby of this.game.nearbyUnits(
       tile,
-      AMBIENCE_RANGE_TILES,
+      AMBIENCE_RANGE_TILES * this.game.config().mapScale(),
       AMBIENT_STRUCTURE_TYPES,
     )) {
       if (closest === null || nearby.distSquared < closest.distSquared) {

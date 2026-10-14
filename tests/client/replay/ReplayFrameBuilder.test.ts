@@ -43,7 +43,11 @@ const MAPS = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../testdata/maps",
 );
-const RULES = { allianceDuration: 100, doomsdayClockWarnTicks: 150 };
+const RULES = {
+  allianceDuration: 100,
+  doomsdayClockWarnTicks: 150,
+  nukeMagnitudes: (unitType: UnitType) => stubConfig().nukeMagnitudes(unitType),
+};
 
 /** A fresh copy of a test map for the live GameView (it mutates its map). */
 async function loadMap(mapName: string): Promise<TerrainMapData> {
