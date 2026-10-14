@@ -3,10 +3,11 @@ import {
   countryNeighbors,
   deriveSeed,
   roster,
+  rosterNameOf,
   seedForCountry,
 } from "@openfront/engine-api/resources/RealismCountries";
 import { REALISTIC_SEEDS } from "@openfront/engine-api/resources/RealismData";
-import { WORLD_COUNTRIES } from "@openfront/engine-api/resources/WorldCountries";
+import { REAL_WORLD_COUNTRIES } from "@openfront/engine-api/resources/RealWorldCountries";
 import { realisticSeedFor } from "@openfront/engine/realism/RealisticWorld";
 import fs from "fs";
 import path from "path";
@@ -36,15 +37,22 @@ function nameAt(index: number): string {
 function tilesOf(...iso3s: string[]): number {
   return iso3s.reduce(
     (sum, iso3) =>
-      sum + (WORLD_COUNTRIES.find((c) => c.iso3 === iso3)?.tiles ?? 0),
+      sum + (REAL_WORLD_COUNTRIES.find((c) => c.iso3 === iso3)?.tiles ?? 0),
     0,
   );
 }
 
 describe("RealismCountries roster", () => {
-  test("has about 180 countries after merging dependencies", () => {
-    expect(roster().length).toBeGreaterThanOrEqual(176);
-    expect(roster().length).toBeLessThanOrEqual(182);
+  test("has 183 countries after merging dependencies and dropping Antarctica", () => {
+    expect(roster().length).toBe(183);
+  });
+
+  test("Antarctica has no roster entry, so its land stays neutral", () => {
+    expect(roster().map((c) => c.iso3)).not.toContain("ATA");
+    expect(roster().map((c) => c.name)).not.toContain("Antarctica");
+    expect(rosterNameOf("Antarctica")).toBeUndefined();
+    expect(rosterNameOf("West Antarctica")).toBeUndefined();
+    expect(rosterNameOf("Spain")).toBe("Spain");
   });
 
   test("names are unique and indices are dense in order", () => {
@@ -57,35 +65,31 @@ describe("RealismCountries roster", () => {
     const iso3s = roster().map((c) => c.iso3);
     for (const dependency of [
       "ALA",
+      "ATF",
       "FRO",
-      "GGY",
+      "GIB",
       "HKG",
-      "IMN",
-      "JEY",
       "MAC",
-      "SPM",
+      "SGS",
     ]) {
       expect(iso3s).not.toContain(dependency);
     }
     expect(byName("China").tiles).toBe(tilesOf("CHN", "HKG", "MAC"));
-    expect(byName("United Kingdom").tiles).toBe(
-      tilesOf("GBR", "GGY", "JEY", "IMN"),
-    );
-    expect(byName("France").tiles).toBe(tilesOf("FRA", "SPM"));
+    expect(byName("United Kingdom").tiles).toBe(tilesOf("GBR", "GIB", "SGS"));
+    expect(byName("France").tiles).toBe(tilesOf("FRA", "ATF"));
     expect(byName("Finland").tiles).toBe(tilesOf("FIN", "ALA"));
     expect(byName("Denmark").tiles).toBe(tilesOf("DNK", "FRO"));
   });
 
   test("the original index of a merged dependency maps to its sovereign", () => {
-    const hong = WORLD_COUNTRIES.find((c) => c.iso3 === "HKG");
+    const hong = REAL_WORLD_COUNTRIES.find((c) => c.iso3 === "HKG");
     if (hong === undefined) throw new Error("HKG missing");
     expect(countryIndexRemap()[hong.index]).toBe(byName("China").index);
     expect(countryIndexRemap()[0]).toBe(0);
   });
 
-  test("Palestine and Siachen stay standalone", () => {
+  test("Palestine stays standalone", () => {
     expect(byName("Palestine").iso3).toBe("PSE");
-    expect(byName("Siachen Glacier").iso3).toBe("KAS");
   });
 
   test("every flag code has a file in resources/flags", () => {
@@ -105,7 +109,7 @@ describe("RealismCountries roster", () => {
         .filter((c) => c.flag === "")
         .map((c) => c.name)
         .sort(),
-    ).toEqual(["Northern Cyprus", "Siachen Glacier", "Somaliland"]);
+    ).toEqual(["Northern Cyprus", "Somaliland"]);
   });
 
   test("manifest nations take their REALISTIC_SEEDS row and flag", () => {
@@ -135,21 +139,10 @@ describe("RealismCountries roster", () => {
     expect(realisticSeedFor("Atlantis")).toBeUndefined();
   });
 
-  test("Antarctica is passive despite its size and has the research-station seed", () => {
-    const antarctica = byName("Antarctica");
-    expect(antarctica.tiles).toBeGreaterThanOrEqual(25);
-    expect(antarctica.passive).toBe(true);
-    expect(antarctica.slow).toBe(false);
-    expect(seedForCountry("Antarctica")).toEqual({ troops: 2000, gold: 5000 });
-    expect(REALISTIC_SEEDS.Antarctica).toEqual({ troops: 2000, gold: 5000 });
-  });
-
   test("passive and slow flags follow the tile count", () => {
     for (const country of roster()) {
-      expect(country.passive).toBe(
-        country.tiles < 25 || country.name === "Antarctica",
-      );
-      expect(country.slow).toBe(country.tiles >= 25 && country.tiles < 100);
+      expect(country.passive).toBe(country.tiles < 156);
+      expect(country.slow).toBe(country.tiles >= 156 && country.tiles < 625);
     }
     expect(
       roster()
@@ -158,15 +151,20 @@ describe("RealismCountries roster", () => {
         .sort(),
     ).toEqual([
       "Andorra",
-      "Antarctica",
       "Bahrain",
       "Brunei",
+      "Cyprus",
       "Liechtenstein",
       "Luxembourg",
+      "Mauritius",
+      "Monaco",
+      "Northern Cyprus",
+      "Palestine",
+      "Samoa",
       "San Marino",
-      "Siachen Glacier",
       "Singapore",
       "Trinidad and Tobago",
+      "Vanuatu",
     ]);
   });
 });
@@ -182,6 +180,16 @@ describe("RealismCountries neighbours", () => {
     expect(countryNeighbors(byName("Lesotho").index).map(nameAt)).toEqual([
       "South Africa",
     ]);
+  });
+
+  test("the neutral raster country is no neighbour of any roster country", () => {
+    const antarctica = REAL_WORLD_COUNTRIES.find((c) => c.iso3 === "ATA");
+    if (antarctica === undefined) throw new Error("ATA missing");
+    expect(countryIndexRemap()[antarctica.index]).toBe(0);
+    for (const country of roster()) {
+      expect(countryNeighbors(country.index)).not.toContain(0);
+    }
+    expect(countryNeighbors(0)).toEqual([]);
   });
 
   test("lists are sorted ascending and symmetric", () => {

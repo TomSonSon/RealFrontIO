@@ -11,6 +11,7 @@ import {
   TerrainType,
   UnitType,
 } from "@openfront/engine-api/game/GameTypes";
+import { roster } from "@openfront/engine-api/resources/RealismCountries";
 import { GameConfig } from "@openfront/engine-api/Schemas";
 import type { AttackLogicInput } from "@openfront/engine/configuration/EngineConfig";
 import { Game, Player } from "@openfront/engine/game/Game";
@@ -146,26 +147,55 @@ describe("Realistic World - nation starting strength", () => {
   const nation = (name: string, id: string) =>
     new PlayerInfo(name, PlayerType.Nation, null, id);
 
-  test("realistic mode scales nation starting troops and gold by real military power", () => {
-    const cfg = new TestConfig(realisticConfig(), false);
+  // Real borders starts a roster country at 10 troops per inhabitant.
+  const startFor = (name: string) =>
+    Math.max(20_000, 10 * roster().find((c) => c.name === name)!.population);
 
-    expect(cfg.startManpower(nation("United States", "us"))).toBe(100_000);
+  test("realistic mode starts nations at their seeded troops and scales gold by real military power", () => {
+    const cfg = new TestConfig(realisticConfig(), false);
+    const seeded = (name: string) => realisticSeedFor(name)!.troops;
+
+    expect(cfg.startManpower(nation("United States", "us"))).toBe(
+      seeded("United States"),
+    );
     expect(cfg.startingGold(nation("United States", "us"))).toBe(500_000n);
 
-    expect(cfg.startManpower(nation("China", "cn"))).toBe(85_000);
-    expect(cfg.startManpower(nation("Russia", "ru"))).toBe(75_000);
-    expect(cfg.startManpower(nation("Canada", "ca"))).toBe(30_000);
+    expect(cfg.startManpower(nation("China", "cn"))).toBe(seeded("China"));
+    expect(cfg.startManpower(nation("Russia", "ru"))).toBe(seeded("Russia"));
+    expect(cfg.startManpower(nation("Canada", "ca"))).toBe(seeded("Canada"));
 
     // A weak nation is present but not irrelevant.
-    expect(cfg.startManpower(nation("Chad", "td"))).toBe(12_000);
+    expect(cfg.startManpower(nation("Chad", "td"))).toBe(seeded("Chad"));
     expect(cfg.startingGold(nation("Chad", "td"))).toBe(35_000n);
   });
 
-  test("sub-national regions start with a fraction of their parent's strength", () => {
+  test("real borders starts a roster country at 10 troops per inhabitant", () => {
+    const cfg = new TestConfig(
+      {
+        ...realisticConfig(),
+        gameMap: GameMapType.RealisticWorld,
+        publicGameModifiers: { isRealisticWorld: true },
+      },
+      false,
+    );
+    expect(cfg.isRealBorders()).toBe(true);
+    expect(cfg.startManpower(nation("United States", "us"))).toBe(
+      startFor("United States"),
+    );
+    expect(cfg.startManpower(nation("Chad", "td"))).toBe(startFor("Chad"));
+  });
+
+  test("sub-national regions keep their seeded troops (no roster country)", () => {
     const cfg = new TestConfig(realisticConfig(), false);
-    expect(cfg.startManpower(nation("California", "ca_ex"))).toBe(45_000);
-    expect(cfg.startManpower(nation("Siberia", "sib"))).toBe(30_000);
-    expect(cfg.startManpower(nation("Quebec", "qc"))).toBe(15_000);
+    expect(cfg.startManpower(nation("California", "ca_ex"))).toBe(
+      realisticSeedFor("California")!.troops,
+    );
+    expect(cfg.startManpower(nation("Siberia", "sib"))).toBe(
+      realisticSeedFor("Siberia")!.troops,
+    );
+    expect(cfg.startManpower(nation("Quebec", "qc"))).toBe(
+      realisticSeedFor("Quebec")!.troops,
+    );
   });
 
   test("without the flag, nation strength uses the normal difficulty-based values", () => {
@@ -283,9 +313,9 @@ describe("Realistic World - nation starting relations", () => {
     const game = await realisticWorld();
     const us = game.player("us_id") as Player;
     const ru = game.player("ru_id") as Player;
-    expect(us.troops()).toBe(100_000);
+    expect(us.troops()).toBe(realisticSeedFor("United States")!.troops);
     expect(us.gold()).toBe(500_000n);
-    expect(ru.troops()).toBe(75_000);
+    expect(ru.troops()).toBe(realisticSeedFor("Russia")!.troops);
   });
 });
 

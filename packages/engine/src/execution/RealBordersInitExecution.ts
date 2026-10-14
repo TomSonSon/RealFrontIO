@@ -2,15 +2,15 @@ import {
   countryIndexRemap,
   roster,
 } from "@openfront/engine-api/resources/RealismCountries";
-import { decodeWorldCountryRaster } from "@openfront/engine-api/resources/WorldCountries";
+import {
+  decodeRealWorldCountryRaster,
+  REAL_WORLD_WIDTH,
+} from "@openfront/engine-api/resources/RealWorldCountries";
 import { z } from "zod";
 import { Execution, Game, Player } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type { ExecRecord } from "../snapshot/SnapshotContext";
 import { rosterNationsByName } from "./RealBordersClaim";
-
-// The raster is row-major with this stride; game tile refs only match it on a 2000-wide map.
-const RASTER_WIDTH = 2000;
 
 /**
  * Real borders: gives every roster country its real land and spawn tile during
@@ -20,10 +20,10 @@ export class RealBordersInitExecution implements Execution {
   private done = false;
 
   init(mg: Game): void {
-    if (mg.width() !== RASTER_WIDTH) {
-      throw new Error(`real borders needs a ${RASTER_WIDTH}-wide map`);
+    if (mg.width() !== REAL_WORLD_WIDTH) {
+      throw new Error(`real borders needs a ${REAL_WORLD_WIDTH}-wide map`);
     }
-    const raster = decodeWorldCountryRaster();
+    const raster = decodeRealWorldCountryRaster();
     const remap = countryIndexRemap();
 
     const byName = rosterNationsByName(mg);
@@ -75,6 +75,18 @@ export class RealBordersInitExecution implements Execution {
   restoreSnapshot(s: RealBordersInitState): void {
     this.done = s.done;
   }
+}
+
+/** Land of raster countries with no roster entry (Antarctica); it stays unowned. */
+export function neutralLandTiles(mg: Game): number {
+  const raster = decodeRealWorldCountryRaster();
+  const remap = countryIndexRemap();
+  let count = 0;
+  for (let tile = 0; tile < raster.length; tile++) {
+    if (raster[tile] === 0 || remap[raster[tile]] !== 0) continue;
+    if (mg.isLand(tile)) count++;
+  }
+  return count;
 }
 
 const RealBordersInitStateSchema = z.object({ done: z.boolean() });

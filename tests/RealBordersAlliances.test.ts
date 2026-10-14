@@ -25,7 +25,7 @@ import { setup } from "./util/Setup";
 import { expectSnapshotRoundTrip } from "./util/Snapshot";
 
 const REAL_BORDERS = {
-  gameMap: GameMapType.World,
+  gameMap: GameMapType.RealisticWorld,
   publicGameModifiers: { isRealisticWorld: true },
 };
 
@@ -54,7 +54,7 @@ async function realBordersGame(
   gameConfig: Parameters<typeof setup>[1] = REAL_BORDERS,
 ): Promise<{ game: Game; runner: GameRunner }> {
   const game = await setup(
-    "world",
+    "../../../resources/maps/realisticworld",
     gameConfig,
     [new PlayerInfo("me", PlayerType.Human, "me_client", "me")],
     undefined,
@@ -304,8 +304,11 @@ describe("real borders: starting alliances", () => {
 
   test("a started game round-trips with its alliances", async () => {
     const { game } = await startedGame();
-    const before = allianceCount(game);
-    const restored = await expectSnapshotRoundTrip(game, "world", 30);
-    expect(allianceCount(restored)).toBe(before);
+    const restored = await expectSnapshotRoundTrip(
+      game,
+      "../../../resources/maps/realisticworld",
+      30,
+    );
+    expect(allianceCount(restored)).toBe(allianceCount(game));
   }, 600_000);
 });

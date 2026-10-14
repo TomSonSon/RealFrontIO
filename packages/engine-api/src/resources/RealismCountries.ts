@@ -1,8 +1,12 @@
 import manifest from "resources/maps/world/manifest.json";
 import type { RealisticNationSeed } from "./RealismData";
 import { REALISTIC_SEEDS } from "./RealismData";
-import type { WorldCountry } from "./WorldCountries";
-import { decodeWorldCountryRaster, WORLD_COUNTRIES } from "./WorldCountries";
+import type { RealWorldCountry } from "./RealWorldCountries";
+import {
+  decodeRealWorldCountryRaster,
+  REAL_WORLD_COUNTRIES,
+  REAL_WORLD_WIDTH,
+} from "./RealWorldCountries";
 
 export interface RealismCountry {
   /** 1-based roster index; the value of this country's tiles in countryIndexRemap(). */
@@ -24,20 +28,22 @@ export interface RealismCountry {
   readonly slow: boolean;
 }
 
-/** Owned by no state's AI regardless of size. */
-const PASSIVE_NAMES: ReadonlySet<string> = new Set(["Antarctica"]);
+/** Land of no state in real borders (Antarctic Treaty): stays neutral, has no roster entry. */
+const NEUTRAL_ISO3: ReadonlySet<string> = new Set(["ATA"]);
 
-/** Tiny dependencies (under 40 tiles) folded into their sovereign. */
+/** Dependencies (under 250 tiles) folded into their sovereign. */
 const MERGE_INTO: Readonly<Record<string, string>> = {
   ALA: "FIN",
+  ATF: "FRA",
   FRO: "DNK",
-  GGY: "GBR",
+  GIB: "GBR",
   HKG: "CHN",
-  IMN: "GBR",
-  JEY: "GBR",
   MAC: "CHN",
-  SPM: "FRA",
+  SGS: "GBR",
 };
+
+const PASSIVE_TILES = 156;
+const SLOW_TILES = 625;
 
 const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   AFG: "af",
@@ -54,6 +60,7 @@ const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   BGD: "bd",
   BGR: "bg",
   BHR: "bh",
+  BHS: "bs",
   BIH: "ba",
   BLZ: "bz",
   BRN: "bn",
@@ -74,6 +81,7 @@ const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   ERI: "er",
   ESH: "eh",
   EST: "ee",
+  FJI: "fj",
   FLK: "fk",
   GAB: "ga",
   GEO: "ge",
@@ -105,6 +113,7 @@ const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   LSO: "ls",
   LTU: "lt",
   LUX: "lu",
+  MCO: "mc",
   MDA: "md",
   MKD: "mk",
   MLI: "ml",
@@ -112,6 +121,7 @@ const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   MNE: "me",
   MOZ: "mz",
   MRT: "mr",
+  MUS: "mu",
   MWI: "mw",
   MYS: "my",
   NCL: "nc",
@@ -152,6 +162,7 @@ const ISO3_TO_FLAG: Readonly<Record<string, string>> = {
   UZB: "uz",
   VNM: "vn",
   VUT: "vu",
+  WSM: "ws",
   YEM: "ye",
   ZWE: "zw",
 };
@@ -163,8 +174,6 @@ const MANIFEST_FLAGS: ReadonlyMap<string, string> = new Map(
   ]),
 );
 
-const RASTER_WIDTH = 2000;
-
 interface Built {
   readonly roster: readonly RealismCountry[];
   readonly remap: Uint16Array;
@@ -172,21 +181,25 @@ interface Built {
 
 let built: Built | undefined;
 
-function targetOf(c: WorldCountry): WorldCountry {
+function targetOf(c: RealWorldCountry): RealWorldCountry {
   const target = MERGE_INTO[c.iso3];
   if (target === undefined) return c;
-  const sovereign = WORLD_COUNTRIES.find((s) => s.iso3 === target);
+  const sovereign = REAL_WORLD_COUNTRIES.find((s) => s.iso3 === target);
   if (sovereign === undefined) {
-    throw new Error(`Realism merge target ${target} is not a world country`);
+    throw new Error(
+      `Realism merge target ${target} is not a real world country`,
+    );
   }
   return sovereign;
 }
 
 function build(): Built {
-  const kept = WORLD_COUNTRIES.filter((c) => targetOf(c) === c);
-  const remap = new Uint16Array(WORLD_COUNTRIES.length + 1);
+  const kept = REAL_WORLD_COUNTRIES.filter(
+    (c) => targetOf(c) === c && !NEUTRAL_ISO3.has(c.iso3),
+  );
+  const remap = new Uint16Array(REAL_WORLD_COUNTRIES.length + 1);
   const roster = kept.map((t, i): RealismCountry => {
-    const group = WORLD_COUNTRIES.filter((c) => targetOf(c) === t);
+    const group = REAL_WORLD_COUNTRIES.filter((c) => targetOf(c) === t);
     for (const c of group) remap[c.index] = i + 1;
     const tiles = group.reduce((sum, c) => sum + c.tiles, 0);
     const name = t.manifestName ?? t.name;
@@ -201,8 +214,8 @@ function build(): Built {
       tiles,
       spawn: t.spawn,
       anchor: t.anchor,
-      passive: PASSIVE_NAMES.has(name) || tiles < 25,
-      slow: tiles >= 25 && tiles < 100,
+      passive: tiles < PASSIVE_TILES,
+      slow: tiles >= PASSIVE_TILES && tiles < SLOW_TILES,
     };
   });
   return { roster, remap };
@@ -216,6 +229,27 @@ function realism(): Built {
 /** The playable countries after merging, in index order. */
 export function roster(): readonly RealismCountry[] {
   return realism().roster;
+}
+
+/** REAL_WORLD_COUNTRIES names merged into the roster country `name` (itself included). */
+export function realismSourceNames(name: string): readonly string[] {
+  const country = roster().find((c) => c.name === name);
+  if (country === undefined) return [];
+  return REAL_WORLD_COUNTRIES.filter(
+    (c) => targetOf(c).iso3 === country.iso3,
+  ).map((c) => c.name);
+}
+
+/**
+ * The roster name of the country a REAL_WORLD_COUNTRIES name merges into, or
+ * undefined when that country is neutral land with no roster entry.
+ */
+export function rosterNameOf(country: string): string | undefined {
+  const c = REAL_WORLD_COUNTRIES.find((r) => r.name === country);
+  if (c === undefined) return undefined;
+  const target = targetOf(c);
+  if (NEUTRAL_ISO3.has(target.iso3)) return undefined;
+  return target.manifestName ?? target.name;
 }
 
 /** Original country index (0 = ocean) to effective roster index. */
@@ -259,23 +293,27 @@ export function seedForCountry(name: string): RealisticNationSeed | undefined {
 let neighbours: readonly (readonly number[])[] | undefined;
 
 function buildNeighbours(): readonly (readonly number[])[] {
-  const raster = decodeWorldCountryRaster();
+  const raster = decodeRealWorldCountryRaster();
   const remap = countryIndexRemap();
   const sets = Array.from(
     { length: roster().length + 1 },
     () => new Set<number>(),
   );
   const link = (a: number, b: number) => {
-    if (b === 0 || b === a) return;
+    if (a === 0 || b === 0 || b === a) return;
     sets[a].add(b);
     sets[b].add(a);
   };
   for (let i = 0; i < raster.length; i++) {
-    const a = remap[raster[i]];
-    if (a === 0) continue;
-    if (i % RASTER_WIDTH < RASTER_WIDTH - 1) link(a, remap[raster[i + 1]]);
-    if (i + RASTER_WIDTH < raster.length) {
-      link(a, remap[raster[i + RASTER_WIDTH]]);
+    const c = raster[i];
+    if (c === 0) continue;
+    const a = remap[c];
+    if (i % REAL_WORLD_WIDTH < REAL_WORLD_WIDTH - 1 && raster[i + 1] !== c) {
+      link(a, remap[raster[i + 1]]);
+    }
+    if (i + REAL_WORLD_WIDTH < raster.length) {
+      const below = raster[i + REAL_WORLD_WIDTH];
+      if (below !== c) link(a, remap[below]);
     }
   }
   return sets.map((s) => [...s].sort((x, y) => x - y));

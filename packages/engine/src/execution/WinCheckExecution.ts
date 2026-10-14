@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Execution, Game } from "../game/Game";
 import { execSnapshotType } from "../snapshot/ExecutionSnapshot";
 import type { ExecRecord, SnapshotReader } from "../snapshot/SnapshotContext";
+import { neutralLandTiles } from "./RealBordersInitExecution";
 
 export class WinCheckExecution implements Execution {
   private active = true;
@@ -16,6 +17,8 @@ export class WinCheckExecution implements Execution {
   private mg: Game | null = null;
 
   private checkedRankedSpawns = false;
+
+  private neutralLand: number | undefined;
 
   // Hard time limit (in seconds) to force a winner before the server's
   // maxGameDuration hard kill. 170mins (10 mins before 3hrs)
@@ -140,7 +143,7 @@ export class WinCheckExecution implements Execution {
       return true;
     }
     const numTilesWithoutFallout =
-      this.mg.numLandTiles() - this.mg.numTilesWithFallout();
+      this.winLandTiles() - this.mg.numTilesWithFallout();
     // Cross-multiplied: the threshold is a whole percentage, so this is
     // exact integer math.
     return (
@@ -148,6 +151,14 @@ export class WinCheckExecution implements Execution {
       numTilesWithoutFallout *
         this.mg.config().percentageTilesOwnedToWin(timeElapsed)
     );
+  }
+
+  // Real borders: neutral Antarctica is no country's land, so it does not count.
+  private winLandTiles(): number {
+    if (this.mg === null) throw new Error("Not initialized");
+    if (!this.mg.config().isRealBorders()) return this.mg.numLandTiles();
+    this.neutralLand ??= neutralLandTiles(this.mg);
+    return this.mg.numLandTiles() - this.neutralLand;
   }
 
   checkWinnerTeam(): void {

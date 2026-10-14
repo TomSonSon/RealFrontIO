@@ -9,12 +9,15 @@ import {
 import {
   countryIndexRemap,
   roster,
+  rosterNameOf,
 } from "@openfront/engine-api/resources/RealismCountries";
-import { decodeWorldCountryRaster } from "@openfront/engine-api/resources/WorldCountries";
+import { REALISM_STRUCTURES } from "@openfront/engine-api/resources/RealismStructures";
+import { decodeRealWorldCountryRaster } from "@openfront/engine-api/resources/RealWorldCountries";
 import { StampedIntent } from "@openfront/engine-api/Schemas";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
 import { NationExecution } from "@openfront/engine/execution/NationExecution";
 import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
+import { RealBordersStartExecution } from "@openfront/engine/execution/RealBordersStartExecution";
 import { Execution, Game, Player } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
 import {
@@ -28,7 +31,7 @@ import { setup } from "./util/Setup";
 import { expectSnapshotRoundTrip, restoreTestGame } from "./util/Snapshot";
 
 const REAL_BORDERS = {
-  gameMap: GameMapType.World,
+  gameMap: GameMapType.RealisticWorld,
   publicGameModifiers: { isRealisticWorld: true },
 };
 
@@ -59,7 +62,7 @@ async function realBordersGame(
   ],
 ): Promise<{ game: Game; runner: GameRunner }> {
   const game = await setup(
-    "world",
+    "../../../resources/maps/realisticworld",
     REAL_BORDERS,
     humans,
     undefined,
@@ -119,13 +122,30 @@ function executionsOf(game: Game): Execution[] {
   return (game as unknown as { executions(): Execution[] }).executions();
 }
 
+// The real-world structures are placed in batches after the start.
+function finishStart(runner: GameRunner, game: Game): void {
+  while (
+    executionsOf(game).some((e) => e instanceof RealBordersStartExecution)
+  ) {
+    step(runner, game);
+  }
+}
+
+function hasCapital(game: Game, player: Player, country: string): boolean {
+  const capital = REALISM_STRUCTURES.find(
+    (s) => s.capital === true && rosterNameOf(s.country) === country,
+  )!;
+  const tile = game.ref(capital.x, capital.y);
+  return player.units(UnitType.City).some((c) => c.tile() === tile);
+}
+
 function hashOf(game: Game): number {
   return (game as unknown as { hash(): number }).hash();
 }
 
 // Land tiles the raster assigns to a country, by roster index.
 function countryTileCounts(game: Game): Map<number, number> {
-  const raster = decodeWorldCountryRaster();
+  const raster = decodeRealWorldCountryRaster();
   const remap = countryIndexRemap();
   const counts = new Map<number, number>();
   for (let t = 0; t < raster.length; t++) {
@@ -165,8 +185,9 @@ describe("real borders: claiming a country", () => {
     step(runner, game, [spawn("me_client", anchorTile(game, "France"))]);
     step(runner, game);
     step(runner, game);
+    finishStart(runner, game);
     const me = playerNamed(game, "me");
-    expect(me.units(UnitType.City).length).toBe(1);
+    expect(hasCapital(game, me, "France")).toBe(true);
   });
 
   test("the claimed country gets no execution after the start", async () => {
@@ -222,16 +243,19 @@ describe("real borders: claiming a country", () => {
     const other = playerNamed(game, "other");
 
     let ocean = -1;
-    let unowned = -1;
     for (let t = 0; t < game.width() * game.height(); t++) {
-      if (ocean < 0 && !game.isLand(t)) ocean = t;
-      if (unowned < 0 && game.isLand(t) && !game.hasOwner(t)) unowned = t;
-      if (ocean >= 0 && unowned >= 0) break;
+      if (!game.isLand(t)) {
+        ocean = t;
+        break;
+      }
     }
+    // Every land tile is owned at tick 0, so free one country's anchor tile.
+    const unowned = anchorTile(game, "France");
+    (game.owner(unowned) as Player).relinquish(unowned);
     expect(map.isLand(ocean)).toBe(false);
     expect(game.hasOwner(unowned)).toBe(false);
-    other.conquer(unowned);
-    const otherTile = unowned;
+    const otherTile = anchorTile(game, "Germany");
+    other.conquer(otherTile);
 
     step(runner, game, [spawn("me_client", ocean)]);
     step(runner, game, [spawn("me_client", unowned)]);
@@ -244,7 +268,7 @@ describe("real borders: claiming a country", () => {
     expect(game.inSpawnPhase()).toBe(true);
   });
 
-  test("a human who never picks is claimed deterministically, from a country of 200 tiles or more", async () => {
+  test("a human who never picks is claimed deterministically, from a country of 1250 tiles or more", async () => {
     async function run(): Promise<{ key: string; spawned: boolean }> {
       const { game, runner } = await realBordersGame();
       step(runner, game);
@@ -266,7 +290,7 @@ describe("real borders: claiming a country", () => {
     expect(country!.passive).toBe(false);
     const { game } = await realBordersGame();
     expect(countryTileCounts(game).get(country!.index)).toBeGreaterThanOrEqual(
-      200,
+      1250,
     );
   }, 600_000);
 });
@@ -307,10 +331,11 @@ describe("real borders: a human named like its claimed country", () => {
     step(runner, game, [spawn("me_client", anchorTile(game, "France"))]);
     step(runner, game, []);
     step(runner, game);
+    finishStart(runner, game);
 
     expect(me.realismKey()).toBe("France");
     expect(isRealismCountry(me)).toBe(true);
-    expect(me.units(UnitType.City).length).toBe(1);
+    expect(hasCapital(game, me, "France")).toBe(true);
 
     let nonZero = 0;
     for (const other of game
@@ -346,12 +371,16 @@ describe("real borders: claim snapshots", () => {
     step(runner, game, [spawn("me_client", anchorTile(game, "France"))]);
     step(runner, game, []);
     step(runner, game);
-    const restored = await expectSnapshotRoundTrip(game, "world", 15);
+    const restored = await expectSnapshotRoundTrip(
+      game,
+      "../../../resources/maps/realisticworld",
+      15,
+    );
     const me = restored.allPlayers().find((p) => p.name() === "me");
     expect(me?.realismKey()).toBe("France");
   }, 300_000);
 
-  test("a v1 player record migrates to a null key, so the name stands in", async () => {
+  test("a v1 player record migrates to a null key, so an unclaimed human keys by id", async () => {
     const { game } = await realBordersGame();
     const root = snapshotGameData(game);
     const index = root.players.findIndex(
@@ -361,9 +390,12 @@ describe("real borders: claim snapshots", () => {
     delete v1.realismKey;
     root.players[index] = { v: 1, d: v1 };
 
-    const restored = await restoreTestGame(encodeSnapshotValue(root), "world");
+    const restored = await restoreTestGame(
+      encodeSnapshotValue(root),
+      "../../../resources/maps/realisticworld",
+    );
     const me = restored.allPlayers().find((p) => p.name() === "me");
-    expect(me?.realismKey()).toBe("me");
+    expect(me?.realismKey()).toBe(`human:${me?.id()}`);
   }, 300_000);
 });
 

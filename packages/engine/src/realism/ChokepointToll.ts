@@ -2,10 +2,9 @@ import type { TileRef } from "@openfront/engine-api/game/GameMap";
 import type { Gold } from "@openfront/engine-api/game/GameTypes";
 import {
   Chokepoint,
+  chokepointsFor,
   ChokepointTier,
   TIER_BASE_TOLL,
-  WORLD_MAP_HEIGHT,
-  WORLD_MAP_WIDTH,
 } from "@openfront/engine-api/resources/Chokepoints";
 import type { Game, Player } from "../game/Game";
 
@@ -23,12 +22,9 @@ import type { Game, Player } from "../game/Game";
  * is READ ONLY and imported here.
  */
 
-/**
- * The chokepoint boxes are raw tile coordinates of the Normal-size World map,
- * so they only mean anything on a map with exactly those dimensions.
- */
+/** True when the map has chokepoint boxes (see `chokepointsFor`). */
 export function hasChokepointMap(game: Game): boolean {
-  return game.width() === WORLD_MAP_WIDTH && game.height() === WORLD_MAP_HEIGHT;
+  return chokepointsFor(game.width(), game.height()) !== null;
 }
 
 /**

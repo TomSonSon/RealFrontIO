@@ -106,6 +106,7 @@ const cp = {
   lat: 0,
   lon: 0,
   bbox: { x0: 5, y0: 5, x1: 5, y1: 5 },
+  geoBox: { west: 0, south: 0, east: 0, north: 0 },
   tier: CHOKEPOINT_TIERS.Global,
   suggestedTollPerShip: 5000,
   suggestedTollFraction: 0.05,

@@ -4,12 +4,10 @@ import {
   REALISTIC_BLOCS,
   startingAlliancePairs,
 } from "@openfront/engine-api/resources/RealismBlocs";
-import { WORLD_COUNTRIES } from "@openfront/engine-api/resources/WorldCountries";
+import { roster } from "@openfront/engine-api/resources/RealismCountries";
 import { describe, expect, test } from "vitest";
 
-const PLAYER_NAMES = new Set(
-  WORLD_COUNTRIES.map((c) => c.manifestName ?? c.name),
-);
+const PLAYER_NAMES = new Set(roster().map((c) => c.name));
 const NATO = REALISTIC_BLOCS.find((b) => b.id === "nato")!.members;
 
 function isSorted(pairs: readonly (readonly [string, string])[]): boolean {
@@ -24,7 +22,7 @@ function isSorted(pairs: readonly (readonly [string, string])[]): boolean {
 }
 
 describe("RealismBlocs data", () => {
-  test("every bloc member exists as a player name in WORLD_COUNTRIES", () => {
+  test("every bloc member exists as a country in the roster", () => {
     const missing = REALISTIC_BLOCS.flatMap((bloc) =>
       bloc.members
         .filter((name) => !PLAYER_NAMES.has(name))

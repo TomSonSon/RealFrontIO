@@ -10,20 +10,28 @@ import { GameUpdateViewData } from "@openfront/engine-api/game/GameUpdates";
 import {
   countryIndexRemap,
   roster,
+  rosterNameOf,
 } from "@openfront/engine-api/resources/RealismCountries";
-import { decodeWorldCountryRaster } from "@openfront/engine-api/resources/WorldCountries";
+import { REALISM_STRUCTURES } from "@openfront/engine-api/resources/RealismStructures";
+import { decodeRealWorldCountryRaster } from "@openfront/engine-api/resources/RealWorldCountries";
 import { StampedIntent } from "@openfront/engine-api/Schemas";
 import { Executor } from "@openfront/engine/execution/ExecutionManager";
 import { NationExecution } from "@openfront/engine/execution/NationExecution";
 import { PlayerExecution } from "@openfront/engine/execution/PlayerExecution";
+import { neutralLandTiles } from "@openfront/engine/execution/RealBordersInitExecution";
+import { RealBordersStartExecution } from "@openfront/engine/execution/RealBordersStartExecution";
+import { WinCheckExecution } from "@openfront/engine/execution/WinCheckExecution";
 import { Execution, Game, Player } from "@openfront/engine/game/Game";
 import { GameRunner } from "@openfront/engine/GameRunner";
+import { canAiAttack } from "@openfront/engine/realism/RealBordersPolicy";
 import { describe, expect, test } from "vitest";
 import { setup } from "./util/Setup";
 import { expectSnapshotRoundTrip } from "./util/Snapshot";
 
+const MAP_NAME = "../../../resources/maps/realisticworld";
+
 const REAL_BORDERS = {
-  gameMap: GameMapType.World,
+  gameMap: GameMapType.RealisticWorld,
   publicGameModifiers: { isRealisticWorld: true },
 };
 
@@ -54,7 +62,7 @@ async function realBordersGame(): Promise<{
   updates: GameUpdateViewData[];
 }> {
   const game = await setup(
-    "world",
+    MAP_NAME,
     REAL_BORDERS,
     [new PlayerInfo("me", PlayerType.Human, "me_client", "me")],
     undefined,
@@ -83,7 +91,7 @@ function tick(runner: GameRunner, game: Game, ticks = 1): void {
 
 // Land tiles that the raster assigns to a country, and how many raster tiles are skipped.
 function expectedAssignment(game: Game) {
-  const raster = decodeWorldCountryRaster();
+  const raster = decodeRealWorldCountryRaster();
   const remap = countryIndexRemap();
   const map = game.map();
   const perCountry = new Map<number, number>();
@@ -145,7 +153,7 @@ describe("real borders: tick 0 territory", () => {
         perCountry.get(c.index) ?? 0,
       );
     }
-    const raster = decodeWorldCountryRaster();
+    const raster = decodeRealWorldCountryRaster();
     const remap = countryIndexRemap();
     let mismatched = 0;
     for (let t = 0; t < raster.length; t++) {
@@ -160,6 +168,39 @@ describe("real borders: tick 0 territory", () => {
 
     const human = game.allPlayers().find((p) => p.name() === "me");
     expect(human?.numTilesOwned()).toBe(0);
+  });
+
+  test("Antarctic land stays neutral after tick 0 and has no player", async () => {
+    const { game, runner } = await realBordersGame();
+    tick(runner, game);
+    const raster = decodeRealWorldCountryRaster();
+    const remap = countryIndexRemap();
+    let neutral = 0;
+    let owned = 0;
+    for (let t = 0; t < raster.length; t++) {
+      if (raster[t] === 0 || remap[raster[t]] !== 0 || !game.isLand(t))
+        continue;
+      neutral++;
+      if (game.hasOwner(t)) owned++;
+    }
+    expect(neutral).toBeGreaterThan(0);
+    expect(neutral).toBe(neutralLandTiles(game));
+    expect(owned).toBe(0);
+    expect(game.allPlayers().some((p) => p.name() === "Antarctica")).toBe(
+      false,
+    );
+  });
+
+  test("terra nullius attacks on neutral land are allowed once spawn immunity ends", async () => {
+    const { game, runner } = await realBordersGame();
+    tick(runner, game, 2);
+    game.endSpawnPhase();
+    tick(runner, game, 3);
+    const nation = game.nations()[0];
+    const attacker = game.player(nation.playerInfo.id);
+    expect(canAiAttack(game, attacker, game.terraNullius())).toBe(
+      !game.isNationSpawnImmunityActive(),
+    );
   });
 
   test("every country's spawn tile is owned by that country after tick 0", async () => {
@@ -195,12 +236,32 @@ describe("real borders: start of play", () => {
     tick(runner, game, 2);
     game.endSpawnPhase();
     tick(runner, game, 3);
+    // The structures, capitals included, are placed in batches.
+    while (
+      executionsOf(game).some((e) => e instanceof RealBordersStartExecution)
+    ) {
+      tick(runner, game);
+    }
 
     const map = game.map();
     for (const nation of game.nations()) {
       const player = game.player(nation.playerInfo.id);
       if (!player.isAlive()) continue;
       const cities = player.units(UnitType.City);
+      const capital = REALISM_STRUCTURES.find(
+        (s) =>
+          s.capital === true &&
+          rosterNameOf(s.country) === nation.playerInfo.name,
+      );
+      if (capital !== undefined) {
+        const tile = game.ref(capital.x, capital.y);
+        expect(
+          cities.some((c) => c.tile() === tile),
+          nation.playerInfo.name,
+        ).toBe(true);
+        continue;
+      }
+      // No capital in the real-world data: the anchor city only.
       expect(cities.length, nation.playerInfo.name).toBe(1);
       const spawn = nation.spawnCell!;
       const city = cities[0].tile();
@@ -246,19 +307,19 @@ describe("real borders: start of play", () => {
           p.outgoingAttacks().every((a) => a.target() !== game.terraNullius()),
         ),
     ).toBe(true);
-  });
+  }, 120_000);
 });
 
 describe("real borders: snapshots", () => {
   test("round-trips before tick 0", async () => {
     const { game } = await realBordersGame();
-    await expectSnapshotRoundTrip(game, "world", 3);
+    await expectSnapshotRoundTrip(game, MAP_NAME, 3);
   }, 300_000);
 
   test("round-trips mid spawn phase and resumes the start", async () => {
     const { game, runner } = await realBordersGame();
     tick(runner, game);
-    await expectSnapshotRoundTrip(game, "world", 30, (g, i) => {
+    await expectSnapshotRoundTrip(game, MAP_NAME, 30, (g, i) => {
       if (i === 10) g.endSpawnPhase();
     });
   }, 300_000);
@@ -268,7 +329,7 @@ describe("real borders: snapshots", () => {
     tick(runner, game, 2);
     game.endSpawnPhase();
     tick(runner, game, 3);
-    await expectSnapshotRoundTrip(game, "world", 15);
+    await expectSnapshotRoundTrip(game, MAP_NAME, 15);
   }, 300_000);
 });
 
@@ -341,4 +402,34 @@ describe("real borders: determinism", () => {
   test("two identical runs have equal hashes every 25 ticks", async () => {
     expect(await hashes()).toEqual(await hashes());
   }, 600_000);
+});
+
+describe("real borders: win share", () => {
+  test("80 percent of country land wins even when Antarctica is not owned", async () => {
+    const { game, runner } = await realBordersGame();
+    tick(runner, game);
+    const human = game.allPlayers().find((p) => p.name() === "me");
+    if (human === undefined) throw new Error("no human");
+    const raster = decodeRealWorldCountryRaster();
+    const remap = countryIndexRemap();
+    const countryLand = game.numLandTiles() - neutralLandTiles(game);
+    const needed = Math.floor((countryLand * 80) / 100) + 1;
+    // Under the all-land share this many tiles would not win.
+    expect(needed * 100).toBeLessThanOrEqual(game.numLandTiles() * 80);
+
+    let taken = 0;
+    for (let t = 0; t < raster.length && taken < needed; t++) {
+      if (remap[raster[t]] === 0 || !game.isLand(t) || game.isImpassable(t)) {
+        continue;
+      }
+      human.conquer(t);
+      taken++;
+    }
+    expect(human.numTilesOwned()).toBe(needed);
+
+    const winCheck = new WinCheckExecution();
+    winCheck.init(game, 0);
+    winCheck.tick(10);
+    expect(winCheck.isActive()).toBe(false);
+  }, 300_000);
 });

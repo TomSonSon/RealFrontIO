@@ -6,7 +6,7 @@ import {
 } from "@openfront/engine-api/game/GameTypes";
 import {
   chokepointContains,
-  CHOKEPOINTS,
+  chokepointsFor,
   getChokepoint,
 } from "@openfront/engine-api/resources/Chokepoints";
 import { renderNumber } from "@openfront/engine-lib/Format";
@@ -229,7 +229,8 @@ export class TradeShipExecution implements Execution {
     const shipOwner = this.tradeShip.owner();
     const x = this.mg.map().x(tile);
     const y = this.mg.map().y(tile);
-    for (const cp of CHOKEPOINTS) {
+    const zones = chokepointsFor(this.mg.width(), this.mg.height()) ?? [];
+    for (const cp of zones) {
       if (!chokepointContains(cp, x, y)) continue;
       if (this.chokepointsChecked.includes(cp.id)) continue;
       this.chokepointsChecked.push(cp.id);
